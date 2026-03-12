@@ -1,0 +1,56 @@
+[
+  {
+    "numFact": "P26CON009667904",
+    "importe": 1168.01,
+    "consumo": 3804,
+    "fEmision": "2026-03-03",
+    "cups": "ES0031105688431001TB0F",
+    "digital": true,
+    "codigoDescarga": "P26CON009667904"
+  },
+  {
+    "numFact": "P26CON005108564",
+    "importe": 1448.44,
+    "consumo": 5085,
+    "fEmision": "2026-02-05",
+    "cups": "ES0031105688431001TB0F",
+    "digital": true,
+    "codigoDescarga": "P26CON005108564"
+  },
+  {
+    "numFact": "P26CON000282656",
+    "importe": 1470.42,
+    "consumo": 5614,
+    "fEmision": "2026-01-06",
+    "cups": "ES0031105688431001TB0F",
+    "digital": true,
+    "codigoDescarga": "P26CON000282656"
+  },
+  {
+    "numFact": "P25CON055547879",
+    "importe": 1559.69,
+    "consumo": 6234,
+    "fEmision": "2025-12-03",
+    "cups": "ES0031105688431001TB0F",
+    "digital": false,
+    "codigoDescarga": "P25CON055547879"
+  },
+  {
+    "numFact": "P25CON050765005",
+    "importe": 3708.75,
+    "consumo": 6512,
+    "fEmision": "2025-11-04",
+    "cups": "ES0031105688431001TB0F",
+    "digital": false,
+    "codigoDescarga": "P25CON050765005"
+  },
+  {
+    "numFact": "P25CON050255619",
+    "importe": 1377.38,
+    "consumo": 5432,
+    "fEmision": "2025-10-28",
+    "cups": "ES0031105688431001TB0F",
+    "digital": false,
+    "codigoDescarga": "P25CON050255619"
+  }
+]
