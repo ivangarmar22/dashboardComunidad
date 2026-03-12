@@ -90,6 +90,33 @@ router.get('/:contractKey/latest', resolveContract, (req, res) => {
   }
 });
 
+// Genera períodos mensuales a partir de datos locales del JSON
+function generatePeriodsFromLocalData(dataFile) {
+  const data = readData(dataFile);
+  if (data.length === 0) return [];
+
+  const months = {};
+  data.forEach((d) => {
+    const month = d.date.substring(0, 7);
+    if (!months[month]) months[month] = { dates: [], totalKwh: 0 };
+    months[month].dates.push(d.date);
+    months[month].totalKwh += d.totalKwh || 0;
+  });
+
+  return Object.entries(months)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([month, info]) => {
+      const sorted = info.dates.sort();
+      return {
+        from: sorted[0],
+        to: sorted[sorted.length - 1],
+        consumption: Math.round(info.totalKwh * 100) / 100,
+        isCurrent: false,
+        isLocal: true,
+      };
+    });
+}
+
 // GET /api/endesa/:contractKey/periods - Lista de períodos de facturación
 router.get('/:contractKey/periods', resolveContract, async (req, res) => {
   try {
@@ -97,7 +124,17 @@ router.get('/:contractKey/periods', resolveContract, async (req, res) => {
       console.log(`[Endesa/${req.contractConfig.key}] Sin CLIENT_ID/CONTRACT_ID configurados, no se pueden obtener períodos`);
       return res.json({ success: true, periods: [] });
     }
-    const result = await withTimeout(scrapeEndesaPeriods(req.contractConfig), SCRAPE_TIMEOUT);
+
+    let result;
+    try {
+      result = await withTimeout(scrapeEndesaPeriods(req.contractConfig), SCRAPE_TIMEOUT);
+    } catch (scrapeErr) {
+      console.error(`[Endesa/${req.contractConfig.key}] Error scraping períodos: ${scrapeErr.message}, usando datos locales`);
+      const localPeriods = generatePeriodsFromLocalData(req.contractConfig.dataFile);
+      if (localPeriods.length > 0) localPeriods[0].isCurrent = true;
+      return res.json({ success: true, periods: localPeriods });
+    }
+
     res.json({ success: true, ...result });
   } catch (err) {
     console.error(`[Endesa/${req.contractConfig.key}] Error obteniendo períodos:`, err.message);
