@@ -40,15 +40,16 @@ function Dashboard({ activeContract }) {
   // --- Facturación ---
   const billing = useBilling();
 
-  // Generar datos mensuales desde billing si no hay datos del scraper
+  // Generar datos mensuales: fallback a billing solo para comunes
   const monthlyData = useMemo(() => {
     if (endesaFull.monthly.length > 0) return endesaFull.monthly;
+    if (activeContract !== 'comunes') return [];
     if (billing.invoices.length === 0) return [];
     return billing.invoices.map((inv) => ({
       month: inv.fEmision.substring(0, 7),
       totalKwh: inv.consumo,
     })).sort((a, b) => a.month.localeCompare(b.month));
-  }, [endesaFull.monthly, billing.invoices]);
+  }, [endesaFull.monthly, billing.invoices, activeContract]);
 
   return (
     <div style={{ position: 'relative' }}>

@@ -21,8 +21,8 @@ function PeriodSelector({ contractKey, onDataLoaded, onLoadingChange }) {
         const json = await res.json();
         let periodsData = json.success ? (json.periods || []) : [];
 
-        // Si no hay períodos del scraper, generar desde facturación
-        if (periodsData.length === 0) {
+        // Si no hay períodos del scraper, generar desde facturación (solo comunes)
+        if (periodsData.length === 0 && contractKey === 'comunes') {
           try {
             const billingRes = await fetch(`${API_BASE}/endesa/billing`);
             const billingJson = await billingRes.json();
