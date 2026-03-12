@@ -68,23 +68,18 @@ export async function getEndesaCookies(contractConfig) {
     });
 
     console.log(`[Endesa/${contractConfig.key}] Navegando a login...`);
-    await page.goto(LOGIN_URL, { waitUntil: 'load', timeout: 60000 });
-    await page.waitForTimeout(5000);
+    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     try {
       const acceptBtn = page.locator('#onetrust-accept-btn-handler');
-      if (await acceptBtn.isVisible({ timeout: 3000 })) {
+      if (await acceptBtn.isVisible({ timeout: 2000 })) {
         await acceptBtn.click();
-        await page.waitForTimeout(1000);
       }
     } catch { /* No hay banner */ }
 
     console.log(`[Endesa/${contractConfig.key}] Esperando formulario de login...`);
-    await page.waitForSelector('input[type="email"], input[name="email"], #email, input[name="user"]', {
-      timeout: 15000,
-    });
-
     const emailInput = page.locator('input[type="email"], input[name="email"], #email, input[name="user"]').first();
+    await emailInput.waitFor({ timeout: 15000 });
     await emailInput.fill(contractConfig.user);
 
     const passInput = page.locator('input[type="password"], input[name="password"], #password').first();
@@ -98,17 +93,17 @@ export async function getEndesaCookies(contractConfig) {
       await page.waitForURL(url => {
         const href = url.toString();
         return href.includes('endesaclientes.com') || href.includes('area-cliente');
-      }, { timeout: 45000 });
+      }, { timeout: 30000 });
     } catch {
       console.log(`[Endesa/${contractConfig.key}] Timeout en redirección, continuando...`);
     }
 
     try {
       await page.goto(POST_LOGIN_URL + '?neolpostlogin=true', {
-        waitUntil: 'load',
-        timeout: 30000,
+        waitUntil: 'domcontentloaded',
+        timeout: 20000,
       });
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(2000);
     } catch {
       console.log(`[Endesa/${contractConfig.key}] Timeout en página de consumos, continuando...`);
     }
@@ -346,7 +341,7 @@ export async function getCookiesWithFallback(contractConfig) {
   }
 
   const cached = loadCookieCache(contractConfig);
-  if (cached && (Date.now() - cached.timestamp) < 30 * 60 * 1000) {
+  if (cached && (Date.now() - cached.timestamp) < 4 * 60 * 60 * 1000) {
     console.log(`[Endesa/${contractConfig.key}] Usando cookies cacheadas`);
     return { cookieHeader: cached.cookieHeader, sessionId: cached.sessionId };
   }

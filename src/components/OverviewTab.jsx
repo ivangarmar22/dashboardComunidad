@@ -7,16 +7,6 @@ import { useBilling } from '../hooks/useBilling.js';
 import { fmtNum } from '../utils/format.js';
 
 function OverviewTab() {
-  const defaultRange = useMemo(() => {
-    const today = new Date();
-    const monthAgo = new Date(today);
-    monthAgo.setDate(monthAgo.getDate() - 30);
-    return {
-      start: monthAgo.toISOString().split('T')[0],
-      end: today.toISOString().split('T')[0],
-    };
-  }, []);
-
   const fullRange = useMemo(() => {
     const today = new Date();
     const yearAgo = new Date(today);
@@ -27,13 +17,21 @@ function OverviewTab() {
     };
   }, []);
 
-  const portales = useConsumption('endesa', defaultRange, 300000, 'portales');
-  const portalesFull = useConsumption('endesa', fullRange, 0, 'portales');
+  const portales = useConsumption('endesa', fullRange, 300000, 'portales');
   const billing = useBilling();
 
+  // Últimos 30 días de portales (filtrado del rango completo)
+  const last30 = useMemo(() => {
+    if (portales.data.length === 0) return [];
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+    return portales.data.filter(d => d.date >= cutoffStr);
+  }, [portales.data]);
+
   const totalKwhPortales = useMemo(
-    () => portales.data.reduce((s, d) => s + (d.totalKwh || 0), 0),
-    [portales.data]
+    () => last30.reduce((s, d) => s + (d.totalKwh || 0), 0),
+    [last30]
   );
 
   const lastInvoice = billing.invoices.length > 0 ? billing.invoices[0] : null;
@@ -47,7 +45,6 @@ function OverviewTab() {
     [billing.invoices]
   );
 
-  // Monthly de comunes desde billing
   const comunesMonthly = useMemo(() => {
     if (billing.invoices.length === 0) return [];
     return billing.invoices.map((inv) => ({
@@ -78,8 +75,8 @@ function OverviewTab() {
           badgeClass="badge-blue"
           value={totalKwhPortales > 0 ? fmtNum(totalKwhPortales) : '--'}
           unit="kWh"
-          label={portales.data.length > 0
-            ? `Media: ${fmtNum(totalKwhPortales / portales.data.length)} kWh/día`
+          label={last30.length > 0
+            ? `Media: ${fmtNum(totalKwhPortales / last30.length)} kWh/día`
             : 'Sin datos'}
           loading={portales.loading}
           error={portales.error}
@@ -103,7 +100,7 @@ function OverviewTab() {
       <h2 className="section-title">Comparativa Mensual</h2>
       <MonthlyComparisonChart
         comunesMonthly={comunesMonthly}
-        portalesMonthly={portalesFull.monthly}
+        portalesMonthly={portales.monthly}
       />
 
       <h2 className="section-title">Últimas Facturas - Zonas Comunes</h2>
