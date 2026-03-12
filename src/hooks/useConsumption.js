@@ -28,11 +28,15 @@ export function useConsumption(service, dateRange, refreshInterval = 0, contract
       setLoading(true);
       setError(null);
 
+      const timeout = setTimeout(() => controller.abort(), 120000);
+
       const params = `start=${dateRange.start}&end=${dateRange.end}`;
       const [rangeRes, monthlyRes] = await Promise.all([
         fetch(`${basePath}/range?${params}`, { signal: controller.signal }),
         fetch(`${basePath}/monthly`, { signal: controller.signal }),
       ]);
+
+      clearTimeout(timeout);
 
       const rangeData = await rangeRes.json();
       const monthlyData = await monthlyRes.json();

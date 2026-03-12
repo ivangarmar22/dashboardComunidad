@@ -6,6 +6,15 @@ import { fetchBillingHistory } from '../scrapers/endesa-billing-scraper.js';
 
 const router = Router();
 
+const SCRAPE_TIMEOUT = 90000; // 90 segundos máximo para scraping
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout de scraping')), ms)),
+  ]);
+}
+
 // Middleware: resolver contractKey a contractConfig
 function resolveContract(req, res, next) {
   try {
@@ -30,7 +39,7 @@ router.get('/billing', async (_req, res) => {
     if (data.length === 0) {
       console.log('[Endesa/Billing] Sin datos locales, obteniendo facturas...');
       try {
-        const invoices = await fetchBillingHistory();
+        const invoices = await withTimeout(fetchBillingHistory(), SCRAPE_TIMEOUT);
         if (invoices.length > 0) {
           const result = appendData(dataFile, invoices, 'numFact');
           console.log(`[Endesa/Billing] Guardadas ${result.added} facturas (total: ${result.total})`);
@@ -88,7 +97,7 @@ router.get('/:contractKey/periods', resolveContract, async (req, res) => {
       console.log(`[Endesa/${req.contractConfig.key}] Sin CLIENT_ID/CONTRACT_ID configurados, no se pueden obtener períodos`);
       return res.json({ success: true, periods: [] });
     }
-    const result = await scrapeEndesaPeriods(req.contractConfig);
+    const result = await withTimeout(scrapeEndesaPeriods(req.contractConfig), SCRAPE_TIMEOUT);
     res.json({ success: true, ...result });
   } catch (err) {
     console.error(`[Endesa/${req.contractConfig.key}] Error obteniendo períodos:`, err.message);
@@ -116,7 +125,7 @@ router.post('/:contractKey/period', resolveContract, async (req, res) => {
     if (data.length < expectedDays * 0.9 && req.contractConfig.clientId && req.contractConfig.contractId) {
       console.log(`[Endesa/${req.contractConfig.key}] Datos locales incompletos para período ${period.from} - ${period.to} (${data.length}/${expectedDays} días), pidiendo a Endesa...`);
       try {
-        const fetched = await scrapeEndesaByPeriod(period, req.contractConfig);
+        const fetched = await withTimeout(scrapeEndesaByPeriod(period, req.contractConfig), SCRAPE_TIMEOUT);
         if (fetched.length > 0) {
           const result = appendData(dataFile, fetched, 'date');
           console.log(`[Endesa/${req.contractConfig.key}] Guardados ${result.added} nuevos días (total: ${result.total})`);
@@ -150,7 +159,7 @@ router.get('/:contractKey/range', resolveContract, async (req, res) => {
     if (data.length === 0 && req.contractConfig.clientId && req.contractConfig.contractId) {
       console.log(`[Endesa/${req.contractConfig.key}] Sin datos locales, obteniendo datos recientes...`);
       try {
-        const fetched = await scrapeEndesa(req.contractConfig);
+        const fetched = await withTimeout(scrapeEndesa(req.contractConfig), SCRAPE_TIMEOUT);
         if (fetched.length > 0) {
           const result = appendData(req.contractConfig.dataFile, fetched, 'date');
           console.log(`[Endesa/${req.contractConfig.key}] Guardados ${result.added} nuevos días (total: ${result.total})`);
