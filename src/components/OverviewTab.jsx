@@ -5,6 +5,7 @@ import BillingTable from './BillingTable.jsx';
 import { useConsumption } from '../hooks/useConsumption.js';
 import { useBilling } from '../hooks/useBilling.js';
 import { fmtNum } from '../utils/format.js';
+import { BuildingIcon, HomeIcon, EuroIcon } from './Icons.jsx';
 
 function OverviewTab() {
   const fullRange = useMemo(() => {
@@ -58,6 +59,7 @@ function OverviewTab() {
       <div className="dashboard-grid dashboard-grid-3">
         <ServiceCard
           title="Zonas Comunes"
+          icon={<BuildingIcon />}
           badge="Última factura"
           badgeClass="badge-blue"
           value={lastInvoice ? fmtNum(lastInvoice.consumo) : '--'}
@@ -70,7 +72,8 @@ function OverviewTab() {
           color="var(--accent-blue)"
         />
         <ServiceCard
-          title="Portales (1-7)"
+          title="Portales"
+          icon={<HomeIcon />}
           badge="Últimos 30 días"
           badgeClass="badge-blue"
           value={totalKwhPortales > 0 ? fmtNum(totalKwhPortales) : '--'}
@@ -84,6 +87,7 @@ function OverviewTab() {
         />
         <ServiceCard
           title="Total Facturado"
+          icon={<EuroIcon />}
           badge={`${billing.invoices.length} facturas`}
           badgeClass="badge-blue"
           value={totalFacturado > 0 ? fmtNum(totalFacturado) : '--'}

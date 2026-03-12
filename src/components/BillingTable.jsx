@@ -29,8 +29,8 @@ function BillingTable({ invoices, loading, error }) {
           <tr>
             <th>Fecha</th>
             <th>N. Factura</th>
-            <th style={{ textAlign: 'right' }}>Consumo (kWh)</th>
-            <th style={{ textAlign: 'right' }}>Importe (€)</th>
+            <th style={{ textAlign: 'center' }}>Consumo</th>
+            <th style={{ textAlign: 'right' }}>Importe</th>
           </tr>
         </thead>
         <tbody>
@@ -38,7 +38,7 @@ function BillingTable({ invoices, loading, error }) {
             <tr key={inv.numFact}>
               <td>{fmtDate(inv.fEmision)}</td>
               <td>{inv.numFact}</td>
-              <td style={{ textAlign: 'right' }}>{fmtNum(inv.consumo)}</td>
+              <td style={{ textAlign: 'center' }}>{fmtNum(inv.consumo)} kWh</td>
               <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtNum(inv.importe)} €</td>
             </tr>
           ))}
@@ -46,7 +46,7 @@ function BillingTable({ invoices, loading, error }) {
         <tfoot>
           <tr>
             <td colSpan="2" style={{ fontWeight: 700 }}>Total</td>
-            <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtNum(totalConsumo)} kWh</td>
+            <td style={{ textAlign: 'center', fontWeight: 700 }}>{fmtNum(totalConsumo)} kWh</td>
             <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtNum(totalImporte)} €</td>
           </tr>
         </tfoot>

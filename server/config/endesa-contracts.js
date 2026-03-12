@@ -16,7 +16,7 @@ const CONTRACTS = {
   },
   portales: {
     key: 'portales',
-    label: 'Portales (1-7)',
+    label: 'Portales',
     user: process.env.ENDESA_PORTALES_USER,
     password: process.env.ENDESA_PORTALES_PASSWORD,
     clientId: process.env.ENDESA_PORTALES_CLIENT_ID,

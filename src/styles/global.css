@@ -44,12 +44,24 @@ body {
   padding-bottom: 0;
 }
 
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+}
+
+.header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
 .dashboard-header h1 {
   font-size: 24px;
   font-weight: 700;
   color: var(--text-primary);
   white-space: nowrap;
-  padding-bottom: 10px;
 }
 
 /* Tabs en el header */
@@ -59,6 +71,9 @@ body {
 }
 
 .header-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 10px 24px;
   border: none;
   background: transparent;
@@ -70,6 +85,13 @@ body {
   border-bottom: 2px solid transparent;
   position: relative;
   bottom: -1px;
+}
+
+.header-tab svg {
+  flex-shrink: 0;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
 }
 
 .header-tab.active {
@@ -113,6 +135,28 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.1);
+  flex-shrink: 0;
+}
+
+.card-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .card-header h2 {

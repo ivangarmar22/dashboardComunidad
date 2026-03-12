@@ -8,6 +8,7 @@ import BillingTable from './BillingTable.jsx';
 import { useConsumption } from '../hooks/useConsumption.js';
 import { useBilling } from '../hooks/useBilling.js';
 import { fmtNum } from '../utils/format.js';
+import { BoltIcon, TrendIcon } from './Icons.jsx';
 
 function Dashboard({ activeContract }) {
   const [periodData, setPeriodData] = useState([]);
@@ -72,6 +73,7 @@ function Dashboard({ activeContract }) {
       <div className="dashboard-grid" style={{ marginTop: 20 }}>
         <ServiceCard
           title="Consumo del período"
+          icon={<BoltIcon />}
           badge="Endesa"
           badgeClass="badge-blue"
           value={activePeriod?.isBilling
@@ -87,6 +89,7 @@ function Dashboard({ activeContract }) {
         />
         <ServiceCard
           title={activePeriod?.isBilling ? "Importe" : "Media diaria"}
+          icon={<TrendIcon />}
           badge="Período"
           badgeClass="badge-blue"
           value={activePeriod?.isBilling

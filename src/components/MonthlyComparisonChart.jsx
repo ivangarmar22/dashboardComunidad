@@ -51,7 +51,7 @@ function MonthlyComparisonChart({ comunesMonthly = [], portalesMonthly = [] }) {
 
   if (portalesMonthly.length > 0) {
     datasets.push({
-      label: 'Portales (1-7)',
+      label: 'Portales',
       data: labels.map((m) => portalesMap.get(m) || 0),
       backgroundColor: 'rgba(168, 85, 247, 0.7)',
       borderColor: '#a855f7',

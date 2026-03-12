@@ -1,10 +1,13 @@
 import React from 'react';
 
-function ServiceCard({ title, badge, badgeClass, value, unit, label, loading, error, color }) {
+function ServiceCard({ title, badge, badgeClass, value, unit, label, loading, error, color, icon }) {
   return (
     <div className="card">
       <div className="card-header">
-        <h2>{title}</h2>
+        <div className="card-title-row">
+          {icon && <span className="card-icon" style={{ color }}>{icon}</span>}
+          <h2>{title}</h2>
+        </div>
         <span className={`badge ${badgeClass}`}>{badge}</span>
       </div>
 
