@@ -357,11 +357,29 @@ export async function getCookiesWithFallback(contractConfig) {
 }
 
 /**
+ * Reintenta con Playwright si las cookies del .env fallan.
+ */
+async function withCookieRetry(contractConfig, apiFn) {
+  const { cookieHeader, sessionId } = await getCookiesWithFallback(contractConfig);
+  try {
+    return await apiFn(cookieHeader, sessionId);
+  } catch (err) {
+    if (contractConfig.cookie) {
+      console.log(`[Endesa/${contractConfig.key}] Cookies del .env fallaron, reintentando con Playwright...`);
+      const fresh = await getEndesaCookies(contractConfig);
+      return await apiFn(fresh.cookieHeader, fresh.sessionId);
+    }
+    throw err;
+  }
+}
+
+/**
  * Flujo completo: obtener datos recientes (últimos ~22 días).
  */
 export async function scrapeEndesa(contractConfig) {
-  const { cookieHeader, sessionId } = await getCookiesWithFallback(contractConfig);
-  const raw = await fetchEndesaRecent(cookieHeader, sessionId, contractConfig);
+  const raw = await withCookieRetry(contractConfig, (cookie, sid) =>
+    fetchEndesaRecent(cookie, sid, contractConfig)
+  );
   return parseEndesaData(raw);
 }
 
@@ -369,15 +387,17 @@ export async function scrapeEndesa(contractConfig) {
  * Flujo completo: obtener lista de períodos de facturación.
  */
 export async function scrapeEndesaPeriods(contractConfig) {
-  const { cookieHeader, sessionId } = await getCookiesWithFallback(contractConfig);
-  return fetchEndesaPeriods(cookieHeader, sessionId, contractConfig);
+  return withCookieRetry(contractConfig, (cookie, sid) =>
+    fetchEndesaPeriods(cookie, sid, contractConfig)
+  );
 }
 
 /**
  * Flujo completo: obtener datos de un período de facturación específico.
  */
 export async function scrapeEndesaByPeriod(period, contractConfig) {
-  const { cookieHeader, sessionId } = await getCookiesWithFallback(contractConfig);
-  const raw = await fetchEndesaByPeriod(cookieHeader, sessionId, period, contractConfig);
+  const raw = await withCookieRetry(contractConfig, (cookie, sid) =>
+    fetchEndesaByPeriod(cookie, sid, period, contractConfig)
+  );
   return parseEndesaData(raw);
 }
