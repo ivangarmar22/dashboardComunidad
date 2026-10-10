@@ -7,16 +7,14 @@
       name="description"
       content="Consumo y facturas de electricidad de la comunidad Terrazas del Cañaveral"
     />
-    <meta name="theme-color" content="#f3f0e8" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#131211" media="(prefers-color-scheme: dark)" />
-    <title>Terrazas del Cañaveral · Electricidad</title>
+    <meta name="theme-color" content="#f3f0e8" />
+    <title>Terrazas del Cañaveral</title>
     <link rel="icon" type="image/png" href="/logo.png" />
     <script>
-      // Tema guardado aplicado antes de pintar, para evitar un destello
+      // Modo oscuro guardado aplicado antes de pintar, para evitar un destello
       try {
-        const theme = localStorage.getItem('dashboard-theme');
-        if (theme === 'light' || theme === 'dark') {
-          document.documentElement.setAttribute('data-theme', theme);
+        if (localStorage.getItem('dashboard-theme') === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
         }
       } catch {
         // Sin acceso a localStorage

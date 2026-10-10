@@ -1,26 +1,25 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
-// Los colores viven en global.css; Chart.js necesita valores concretos, así que se leen aquí
+// Los colores viven en global.css; Chart.js necesita valores concretos, así que se leen aquí.
+// Claro por defecto: el oscuro solo se aplica si se elige con el botón.
 const STORAGE_KEY = 'dashboard-theme';
-const darkQuery = () => window.matchMedia('(prefers-color-scheme: dark)');
 const ThemeContext = createContext(null);
 
 function readStoredMode() {
   try {
-    const value = localStorage.getItem(STORAGE_KEY);
-    return value === 'light' || value === 'dark' ? value : 'system';
+    return localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
   } catch {
-    return 'system';
+    return 'light';
   }
 }
 
 function applyMode(mode) {
   const root = document.documentElement;
-  if (mode === 'system') root.removeAttribute('data-theme');
-  else root.setAttribute('data-theme', mode);
+  if (mode === 'dark') root.setAttribute('data-theme', 'dark');
+  else root.removeAttribute('data-theme');
   try {
-    if (mode === 'system') localStorage.removeItem(STORAGE_KEY);
-    else localStorage.setItem(STORAGE_KEY, mode);
+    if (mode === 'dark') localStorage.setItem(STORAGE_KEY, 'dark');
+    else localStorage.removeItem(STORAGE_KEY);
   } catch {
     // Almacenamiento no disponible
   }
@@ -46,26 +45,13 @@ function readTokens() {
 }
 
 export function ThemeProvider({ children }) {
-  const [mode, setMode] = useState(readStoredMode);
-  const [systemDark, setSystemDark] = useState(() => darkQuery().matches);
+  const [resolved, setResolved] = useState(readStoredMode);
   const [tokens, setTokens] = useState(readTokens);
-
-  useEffect(() => {
-    const query = darkQuery();
-    const onChange = (event) => {
-      setSystemDark(event.matches);
-      setTokens(readTokens());
-    };
-    query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
-  }, []);
-
-  const resolved = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
 
   const toggle = useCallback(() => {
     const next = resolved === 'dark' ? 'light' : 'dark';
     applyMode(next);
-    setMode(next);
+    setResolved(next);
     setTokens(readTokens());
   }, [resolved]);
 

@@ -35,29 +35,6 @@
   --cell-gap: 2px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    color-scheme: dark;
-    --page: #131211;
-    --surface: #1c1b19;
-    --surface-2: #26241f;
-    --ink: #f2efe8;
-    --ink-2: #c2bdb1;
-    --ink-3: #8f8a7f;
-    --grid: #2c2a26;
-    --baseline: #3e3b35;
-    --border: rgba(255, 255, 255, 0.09);
-    --c-comunes: #e0662c;
-    --c-portales: #2a9cc0;
-    --c-neutral: #6f6a60;
-    --good: #2fb52f;
-    --bad: #e66767;
-    --warn: #f0b545;
-    --ramp-2: 75%;
-    --ramp-3: 55%;
-  }
-}
-
 :root[data-theme='dark'] {
   color-scheme: dark;
   --page: #131211;
