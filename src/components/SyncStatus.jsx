@@ -30,8 +30,11 @@ function describe(data, now) {
   );
   const staleMs = (data.intervalHours || 6) * 2 * 60 * 60 * 1000;
 
+  const lastData = [lastReading, data.billing.lastInvoice].filter(Boolean).sort().at(-1);
+
   const title = [
     lastReading && `Última lectura: ${lastReading}`,
+    data.billing.lastInvoice && `Última factura: ${data.billing.lastInvoice}`,
     ...errors.map((e) => `${e.label ?? 'Facturas'}: ${e.lastError}`),
   ]
     .filter(Boolean)
@@ -39,7 +42,7 @@ function describe(data, now) {
 
   if (sources.some((s) => s.running)) return { state: 'is-running', text: 'Sincronizando…', title };
   if (configured.length === 0) {
-    const text = lastReading ? `Datos guardados hasta el ${fmtDayMonth(lastReading)}` : 'Sin datos';
+    const text = lastData ? `Datos guardados hasta el ${fmtDayMonth(lastData)}` : 'Sin datos';
     return { state: 'is-stale', text, title };
   }
   if (errors.length > 0) {

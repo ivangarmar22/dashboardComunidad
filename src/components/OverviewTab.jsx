@@ -107,7 +107,8 @@ function OverviewTab({ onNavigate }) {
           {recentSummary && (
             <>
               Los portales gastan <strong>{fmtNum(recentSummary.avgKwh)}&nbsp;kWh al día</strong> de
-              media en los últimos {recentSummary.days} días con lectura.
+              media en los {recentSummary.days} días con lectura hasta el{' '}
+              {fmtDate(recent.at(-1).date)}.
             </>
           )}
           {isEmpty && 'Todavía no hay datos guardados.'}

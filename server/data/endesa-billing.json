@@ -1,5 +1,68 @@
 [
   {
+    "numFact": "P26CON042639607",
+    "importe": 1380.43,
+    "consumo": 6291,
+    "fEmision": "2026-10-09",
+    "cups": "ES0031105688431001TB0F",
+    "digital": null,
+    "codigoDescarga": "P26CON042639607"
+  },
+  {
+    "numFact": "P26CON038485591",
+    "importe": 1433.44,
+    "consumo": 6574,
+    "fEmision": "2026-09-10",
+    "cups": "ES0031105688431001TB0F",
+    "digital": null,
+    "codigoDescarga": "P26CON038485591"
+  },
+  {
+    "numFact": "P26CON033548841",
+    "importe": 1452.75,
+    "consumo": 6526,
+    "fEmision": "2026-08-08",
+    "cups": "ES0031105688431001TB0F",
+    "digital": null,
+    "codigoDescarga": "P26CON033548841"
+  },
+  {
+    "numFact": "P26CON028859215",
+    "importe": 1320.56,
+    "consumo": 5649,
+    "fEmision": "2026-07-08",
+    "cups": "ES0031105688431001TB0F",
+    "digital": null,
+    "codigoDescarga": "P26CON028859215"
+  },
+  {
+    "numFact": "P26CON025134478",
+    "importe": 1678.49,
+    "consumo": 6803,
+    "fEmision": "2026-06-10",
+    "cups": "ES0031105688431001TB0F",
+    "digital": null,
+    "codigoDescarga": "P26CON025134478"
+  },
+  {
+    "numFact": "P26CON018082427",
+    "importe": 819.88,
+    "consumo": 2725,
+    "fEmision": "2026-04-28",
+    "cups": "ES0031105688431001TB0F",
+    "digital": null,
+    "codigoDescarga": "P26CON018082427"
+  },
+  {
+    "numFact": "P26CON014820513",
+    "importe": 1271.21,
+    "consumo": 4407,
+    "fEmision": "2026-04-08",
+    "cups": "ES0031105688431001TB0F",
+    "digital": null,
+    "codigoDescarga": "P26CON014820513"
+  },
+  {
     "numFact": "P26CON009667904",
     "importe": 1168.01,
     "consumo": 3804,
