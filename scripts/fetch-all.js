@@ -1,29 +1,19 @@
 /**
- * Script maestro que ejecuta todos los fetchers.
- * Ejecutar: npm run fetch:all
+ * npm run fetch:all                  consumo de todos los contratos + facturas
+ * npm run fetch:all -- --backfill    incluye todo el histórico de consumo
  */
 
-import { execSync } from 'child_process';
+import '../server/env.js';
+import { syncAll } from '../server/services/sync.js';
 
-const scripts = [
-  { name: 'Endesa', cmd: 'node scripts/fetch-endesa.js' },
-];
+const results = await syncAll({ backfill: process.argv.includes('--backfill') });
+const entries = Object.entries(results);
 
-console.log('==========================================');
-console.log(' Obteniendo todos los datos de consumo');
-console.log(`  ${new Date().toISOString()}`);
-console.log('==========================================\n');
+if (entries.length === 0) console.warn('No hay ningún origen con credenciales en .env');
 
-for (const script of scripts) {
-  console.log(`--- ${script.name} ---`);
-  try {
-    execSync(script.cmd, { stdio: 'inherit' });
-    console.log(`[OK] ${script.name} completado\n`);
-  } catch (error) {
-    console.error(`[ERROR] ${script.name} fallo: ${error.message}\n`);
-  }
+for (const [key, r] of entries) {
+  if (r.error) console.error(`[ERROR] ${key}: ${r.error}`);
+  else console.log(`[OK] ${key}: +${r.added} nuevos, ${r.updated} actualizados`);
 }
 
-console.log('==========================================');
-console.log(' Proceso completado');
-console.log('==========================================');
+process.exit(entries.some(([, r]) => r.error) ? 1 : 0);

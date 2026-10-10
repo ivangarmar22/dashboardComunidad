@@ -1,73 +1,21 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useMemo } from 'react';
+import { useFetch } from './useFetch.js';
 
-const API_BASE = '/api';
+const NO_DATA = [];
+const REFRESH_MS = 5 * 60 * 1000;
 
-/**
- * Hook para obtener datos de consumo de Endesa filtrados por rango de fechas.
- *
- * @param {string} service - 'endesa'
- * @param {{ start: string, end: string }} dateRange - Rango YYYY-MM-DD
- * @param {number} refreshInterval - Intervalo de refresco en ms (0 = sin refresco)
- * @param {string} contractKey - 'comunes' | 'portales'
- */
-export function useConsumption(service, dateRange, refreshInterval = 0, contractKey) {
-  const [data, setData] = useState([]);
-  const [monthly, setMonthly] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const abortRef = useRef(null);
+function isoDaysAgo(days) {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return date.toLocaleDateString('sv-SE');
+}
 
-  const basePath = `${API_BASE}/${service}/${contractKey}`;
-
-  const fetchData = useCallback(async () => {
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const timeout = setTimeout(() => controller.abort(), 120000);
-
-      const params = `start=${dateRange.start}&end=${dateRange.end}`;
-      const [rangeRes, monthlyRes] = await Promise.all([
-        fetch(`${basePath}/range?${params}`, { signal: controller.signal }),
-        fetch(`${basePath}/monthly`, { signal: controller.signal }),
-      ]);
-
-      clearTimeout(timeout);
-
-      const rangeData = await rangeRes.json();
-      const monthlyData = await monthlyRes.json();
-
-      if (rangeData.success) setData(rangeData.data || []);
-      if (monthlyData.success) setMonthly(monthlyData.data || []);
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        setError(err.message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [basePath, dateRange.start, dateRange.end]);
-
-  useEffect(() => {
-    fetchData();
-
-    if (refreshInterval > 0) {
-      const interval = setInterval(fetchData, refreshInterval);
-      return () => clearInterval(interval);
-    }
-  }, [fetchData, refreshInterval]);
-
-  useEffect(() => {
-    return () => {
-      if (abortRef.current) abortRef.current.abort();
-    };
-  }, []);
-
-  const latest = data.length > 0 ? data[data.length - 1] : null;
-
-  return { data, latest, monthly, loading, error, refetch: fetchData };
+// Consumo diario reciente de un contrato; el servidor lo sincroniza en segundo plano
+export function useConsumption(contractKey, { days = 400 } = {}) {
+  const [start, end] = useMemo(() => [isoDaysAgo(days), isoDaysAgo(0)], [days]);
+  const { data, loading, error, refreshing } = useFetch(
+    `/api/endesa/${contractKey}/range?start=${start}&end=${end}`,
+    { refreshInterval: REFRESH_MS },
+  );
+  return { data: data?.data ?? NO_DATA, loading, error, refreshing };
 }

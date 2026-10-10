@@ -1,240 +1,158 @@
 import { Router } from 'express';
-import { readData, getDataByRange, appendData } from '../utils/dataStore.js';
-import { scrapeEndesa, scrapeEndesaPeriods, scrapeEndesaByPeriod } from '../scrapers/endesa-scraper.js';
-import { getContract, getAllContracts, BILLING_CONFIG } from '../config/endesa-contracts.js';
-import { fetchBillingHistory } from '../scrapers/endesa-billing-scraper.js';
+import { readData, getDataByRange } from '../utils/dataStore.js';
+import { getContract, BILLING_CONFIG } from '../config/endesa-contracts.js';
+import {
+  getPeriods,
+  ensurePeriodData,
+  syncContract,
+  syncBilling,
+  hasConsumptionCredentials,
+  hasBillingCredentials,
+} from '../services/sync.js';
 
 const router = Router();
 
-const SCRAPE_TIMEOUT = 90000; // 90 segundos máximo para scraping
+// Máximo que una petición espera a Endesa; la tarea sigue en segundo plano
+const SCRAPE_TIMEOUT_MS = 60000;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout de scraping')), ms)),
-  ]);
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Timeout esperando a Endesa')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-// Middleware: resolver contractKey a contractConfig
 function resolveContract(req, res, next) {
   try {
     req.contractConfig = getContract(req.params.contractKey);
     next();
   } catch {
-    res.status(400).json({ success: false, error: `Contrato no válido: ${req.params.contractKey}` });
+    res
+      .status(400)
+      .json({ success: false, error: `Contrato no válido: ${req.params.contractKey}` });
   }
 }
 
-// GET /api/endesa/contracts - Lista de contratos disponibles
-router.get('/contracts', (_req, res) => {
-  res.json({ success: true, contracts: getAllContracts() });
-});
+function requireAdmin(req, res, next) {
+  const token = process.env.ADMIN_TOKEN;
+  if (!token || req.get('x-admin-token') === token) return next();
+  res.status(401).json({ success: false, error: 'No autorizado' });
+}
 
-// GET /api/endesa/billing - Historial de facturas
-router.get('/billing', async (_req, res) => {
-  try {
-    const dataFile = BILLING_CONFIG.dataFile;
-    let data = readData(dataFile);
-
-    if (data.length === 0) {
-      console.log('[Endesa/Billing] Sin datos locales, obteniendo facturas...');
-      try {
-        const invoices = await withTimeout(fetchBillingHistory(), SCRAPE_TIMEOUT);
-        if (invoices.length > 0) {
-          const result = appendData(dataFile, invoices, 'numFact');
-          console.log(`[Endesa/Billing] Guardadas ${result.added} facturas (total: ${result.total})`);
-          data = readData(dataFile);
-        }
-      } catch (fetchErr) {
-        console.error('[Endesa/Billing] Error:', fetchErr.message);
-      }
+// Zonas Comunes no tiene API de consumo: cada factura cubre desde la emisión anterior
+function periodsFromBilling() {
+  const invoices = [...readData(BILLING_CONFIG.dataFile)].sort((a, b) =>
+    b.fEmision.localeCompare(a.fEmision),
+  );
+  return invoices.map((inv, idx) => {
+    let from = invoices[idx + 1]?.fEmision;
+    if (!from) {
+      const d = new Date(`${inv.fEmision}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - 30);
+      from = d.toISOString().slice(0, 10);
     }
+    return {
+      from,
+      to: inv.fEmision,
+      consumption: inv.consumo,
+      isCurrent: idx === 0,
+      isBilling: true,
+      importe: inv.importe,
+      numFact: inv.numFact,
+    };
+  });
+}
 
-    res.json({ success: true, data, count: data.length });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+router.get('/billing', async (_req, res) => {
+  let data = readData(BILLING_CONFIG.dataFile);
+
+  if (data.length === 0 && hasBillingCredentials()) {
+    try {
+      await withTimeout(syncBilling(), SCRAPE_TIMEOUT_MS);
+      data = readData(BILLING_CONFIG.dataFile);
+    } catch (err) {
+      console.error('[API/billing]', err.message);
+    }
   }
+
+  res.json({ success: true, data, count: data.length });
 });
 
-// POST /api/endesa/billing/refresh - Forzar recarga de facturas
-router.post('/billing/refresh', async (_req, res) => {
-  try {
-    const invoices = await fetchBillingHistory();
-    const result = appendData(BILLING_CONFIG.dataFile, invoices, 'numFact');
-    const data = readData(BILLING_CONFIG.dataFile);
-    res.json({ success: true, data, count: data.length, added: result.added });
-  } catch (err) {
-    console.error('[Endesa/Billing] Error refresh:', err.message);
-    res.status(500).json({ success: false, error: err.message });
-  }
+router.post('/billing/refresh', requireAdmin, async (_req, res) => {
+  const result = await syncBilling();
+  const data = readData(BILLING_CONFIG.dataFile);
+  res.json({ success: true, data, count: data.length, ...result });
 });
 
-// GET /api/endesa/:contractKey - Todos los datos de consumo eléctrico
-router.get('/:contractKey', resolveContract, (req, res) => {
-  try {
-    const data = readData(req.contractConfig.dataFile);
-    res.json({ success: true, data, count: data.length });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+router.get('/:contractKey/periods', resolveContract, async (req, res) => {
+  const cfg = req.contractConfig;
+  let result = await getPeriods(cfg);
+
+  if (result.periods.length === 0 && cfg.key === 'comunes') {
+    result = { periods: periodsFromBilling(), consumptionMean: null, source: 'billing' };
   }
-});
 
-// GET /api/endesa/:contractKey/latest - Último día de consumo
-router.get('/:contractKey/latest', resolveContract, (req, res) => {
-  try {
-    const data = readData(req.contractConfig.dataFile);
-    const latest = data.length > 0 ? data[data.length - 1] : null;
-    res.json({ success: true, data: latest });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// Genera períodos mensuales a partir de datos locales del JSON
-function generatePeriodsFromLocalData(dataFile) {
-  const data = readData(dataFile);
-  if (data.length === 0) return [];
-
-  const months = {};
-  data.forEach((d) => {
-    const month = d.date.substring(0, 7);
-    if (!months[month]) months[month] = { dates: [], totalKwh: 0 };
-    months[month].dates.push(d.date);
-    months[month].totalKwh += d.totalKwh || 0;
+  const periods = [...result.periods].sort((a, b) => {
+    if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+    return b.from.localeCompare(a.from);
   });
 
-  return Object.entries(months)
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([month, info]) => {
-      const sorted = info.dates.sort();
-      return {
-        from: sorted[0],
-        to: sorted[sorted.length - 1],
-        consumption: Math.round(info.totalKwh * 100) / 100,
-        isCurrent: false,
-        isLocal: true,
-      };
-    });
-}
-
-// GET /api/endesa/:contractKey/periods - Lista de períodos de facturación
-router.get('/:contractKey/periods', resolveContract, async (req, res) => {
-  try {
-    if (!req.contractConfig.clientId || !req.contractConfig.contractId) {
-      console.log(`[Endesa/${req.contractConfig.key}] Sin CLIENT_ID/CONTRACT_ID configurados, no se pueden obtener períodos`);
-      return res.json({ success: true, periods: [] });
-    }
-
-    let result;
-    try {
-      result = await withTimeout(scrapeEndesaPeriods(req.contractConfig), SCRAPE_TIMEOUT);
-    } catch (scrapeErr) {
-      console.error(`[Endesa/${req.contractConfig.key}] Error scraping períodos: ${scrapeErr.message}, usando datos locales`);
-      const localPeriods = generatePeriodsFromLocalData(req.contractConfig.dataFile);
-      if (localPeriods.length > 0) localPeriods[0].isCurrent = true;
-      return res.json({ success: true, periods: localPeriods });
-    }
-
-    res.json({ success: true, ...result });
-  } catch (err) {
-    console.error(`[Endesa/${req.contractConfig.key}] Error obteniendo períodos:`, err.message);
-    res.status(500).json({ success: false, error: err.message });
-  }
+  res.json({ success: true, ...result, periods });
 });
 
-// POST /api/endesa/:contractKey/period - Obtener datos de un período específico
 router.post('/:contractKey/period', resolveContract, async (req, res) => {
-  try {
-    const period = req.body;
-    if (!period || !period.from || !period.to) {
-      return res.status(400).json({ success: false, error: 'Objeto período requerido con from y to' });
-    }
-
-    const dataFile = req.contractConfig.dataFile;
-
-    // Calcular días esperados en el período
-    const expectedDays = Math.round(
-      (new Date(period.to) - new Date(period.from)) / (1000 * 60 * 60 * 24)
-    ) + 1;
-    let data = getDataByRange(dataFile, period.from, period.to);
-
-    // Si faltan datos locales (menos del 90% de días esperados) y hay credenciales, pedir a Endesa
-    if (data.length < expectedDays * 0.9 && req.contractConfig.clientId && req.contractConfig.contractId) {
-      console.log(`[Endesa/${req.contractConfig.key}] Datos locales incompletos para período ${period.from} - ${period.to} (${data.length}/${expectedDays} días), pidiendo a Endesa...`);
-      try {
-        const fetched = await withTimeout(scrapeEndesaByPeriod(period, req.contractConfig), SCRAPE_TIMEOUT);
-        if (fetched.length > 0) {
-          const result = appendData(dataFile, fetched, 'date');
-          console.log(`[Endesa/${req.contractConfig.key}] Guardados ${result.added} nuevos días (total: ${result.total})`);
-          data = fetched;
-        }
-      } catch (fetchErr) {
-        console.error(`[Endesa/${req.contractConfig.key}] Error pidiendo período: ${fetchErr.message}`);
-        // Si falla el fetch pero tenemos datos locales parciales, usarlos
-      }
-    } else if (data.length < expectedDays * 0.9) {
-      console.log(`[Endesa/${req.contractConfig.key}] Sin CLIENT_ID/CONTRACT_ID configurados, omitiendo fetch de período`);
-    }
-
-    res.json({ success: true, data, count: data.length });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  const period = req.body;
+  if (!ISO_DATE.test(period?.from) || !ISO_DATE.test(period?.to)) {
+    return res
+      .status(400)
+      .json({ success: false, error: 'Se requiere un período con from y to (YYYY-MM-DD)' });
   }
+
+  const cfg = req.contractConfig;
+  let data;
+  try {
+    data = await withTimeout(ensurePeriodData(cfg, period), SCRAPE_TIMEOUT_MS);
+  } catch {
+    data = getDataByRange(cfg.dataFile, period.from, period.to);
+  }
+
+  res.json({ success: true, data, count: data.length });
 });
 
-// GET /api/endesa/:contractKey/range?start=YYYY-MM-DD&end=YYYY-MM-DD
 router.get('/:contractKey/range', resolveContract, async (req, res) => {
-  try {
-    const { start, end } = req.query;
-    if (!start || !end) {
-      return res.status(400).json({ success: false, error: 'Parámetros start y end requeridos' });
-    }
-
-    let data = getDataByRange(req.contractConfig.dataFile, start, end);
-
-    // Si no hay datos locales y hay credenciales configuradas, obtener desde Endesa
-    if (data.length === 0 && req.contractConfig.clientId && req.contractConfig.contractId) {
-      console.log(`[Endesa/${req.contractConfig.key}] Sin datos locales, obteniendo datos recientes...`);
-      try {
-        const fetched = await withTimeout(scrapeEndesa(req.contractConfig), SCRAPE_TIMEOUT);
-        if (fetched.length > 0) {
-          const result = appendData(req.contractConfig.dataFile, fetched, 'date');
-          console.log(`[Endesa/${req.contractConfig.key}] Guardados ${result.added} nuevos días (total: ${result.total})`);
-          data = fetched.filter(d => d.date >= start && d.date <= end);
-        }
-      } catch (fetchErr) {
-        console.error(`[Endesa/${req.contractConfig.key}] Error obteniendo datos recientes: ${fetchErr.message}`);
-      }
-    } else if (data.length === 0) {
-      console.log(`[Endesa/${req.contractConfig.key}] Sin datos locales y sin CLIENT_ID/CONTRACT_ID configurados, omitiendo auto-fetch`);
-    }
-
-    res.json({ success: true, data, count: data.length });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  const { start, end } = req.query;
+  if (!ISO_DATE.test(start) || !ISO_DATE.test(end)) {
+    return res
+      .status(400)
+      .json({ success: false, error: 'Parámetros start y end requeridos (YYYY-MM-DD)' });
   }
+
+  const cfg = req.contractConfig;
+  let data = getDataByRange(cfg.dataFile, start, end);
+
+  // Primera ejecución sin datos: se espera a una sincronización
+  if (data.length === 0 && hasConsumptionCredentials(cfg)) {
+    try {
+      await withTimeout(syncContract(cfg), SCRAPE_TIMEOUT_MS);
+      data = getDataByRange(cfg.dataFile, start, end);
+    } catch (err) {
+      console.error(`[API/${cfg.key}]`, err.message);
+    }
+  }
+
+  res.json({ success: true, data, count: data.length });
 });
 
-// GET /api/endesa/:contractKey/monthly - Resumen mensual
-router.get('/:contractKey/monthly', resolveContract, (req, res) => {
-  try {
-    const data = readData(req.contractConfig.dataFile);
-    const monthly = {};
-
-    data.forEach((record) => {
-      const month = record.date.substring(0, 7);
-      if (!monthly[month]) {
-        monthly[month] = { month, totalKwh: 0, days: 0 };
-      }
-      monthly[month].totalKwh += record.totalKwh;
-      monthly[month].days += 1;
-    });
-
-    const result = Object.values(monthly).sort((a, b) => a.month.localeCompare(b.month));
-    res.json({ success: true, data: result });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+router.post('/:contractKey/refresh', requireAdmin, resolveContract, async (req, res) => {
+  if (!hasConsumptionCredentials(req.contractConfig)) {
+    return res
+      .status(400)
+      .json({ success: false, error: 'Contrato sin credenciales configuradas' });
   }
+  const result = await syncContract(req.contractConfig);
+  res.json({ success: true, ...result });
 });
 
 export default router;

@@ -1,68 +1,82 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
+fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// Asegurar que el directorio de datos existe
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+// Cache en memoria invalidada por fecha de modificación
+const cache = new Map();
 
-/**
- * Lee datos de un archivo JSON. Devuelve array vacio si no existe.
- */
-export function readData(filename) {
+export function readJson(filename, fallback = null) {
   const filePath = path.join(DATA_DIR, filename);
-  if (!fs.existsSync(filePath)) {
-    return [];
+  let mtimeMs;
+  try {
+    mtimeMs = fs.statSync(filePath).mtimeMs;
+  } catch {
+    return fallback;
   }
-  const raw = fs.readFileSync(filePath, 'utf-8');
-  return JSON.parse(raw);
+
+  const cached = cache.get(filePath);
+  if (cached?.mtimeMs === mtimeMs) return cached.value;
+
+  try {
+    const value = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    cache.set(filePath, { mtimeMs, value });
+    return value;
+  } catch (err) {
+    console.error(`[dataStore] No se pudo leer ${filename}: ${err.message}`);
+    return fallback;
+  }
 }
 
-/**
- * Escribe datos a un archivo JSON.
- */
-export function writeData(filename, data) {
+// Escritura atómica: un corte a mitad no deja el archivo corrupto
+export function writeJson(filename, value) {
   const filePath = path.join(DATA_DIR, filename);
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  const tmpPath = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(value, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, filePath);
+  cache.delete(filePath);
+}
+
+export function readData(filename) {
+  const data = readJson(filename, []);
+  return Array.isArray(data) ? data : [];
 }
 
 /**
- * Agrega nuevos registros sin duplicar por fecha.
- * Cada registro debe tener un campo `date` (YYYY-MM-DD) o `timestamp`.
+ * Inserta registros nuevos y sustituye los existentes que hayan cambiado
+ * (p. ej. un día que Endesa aún no había leído).
  */
-export function appendData(filename, newRecords, keyField = 'date') {
-  const existing = readData(filename);
-  const existingKeys = new Set(existing.map((r) => r[keyField]));
+export function upsertData(
+  filename,
+  newRecords,
+  keyField = 'date',
+  compare = (a, b) => String(a[keyField]).localeCompare(String(b[keyField])),
+) {
+  const byKey = new Map(readData(filename).map((r) => [r[keyField], r]));
+  let added = 0;
+  let updated = 0;
 
-  const toAdd = newRecords.filter((r) => !existingKeys.has(r[keyField]));
-  const merged = [...existing, ...toAdd];
+  for (const record of newRecords) {
+    const key = record[keyField];
+    if (key == null) continue;
+    const prev = byKey.get(key);
+    if (!prev) added++;
+    else if (JSON.stringify(prev) !== JSON.stringify(record)) updated++;
+    else continue;
+    byKey.set(key, record);
+  }
 
-  // Ordenar por fecha/timestamp
-  merged.sort((a, b) => {
-    const da = new Date(a[keyField]);
-    const db = new Date(b[keyField]);
-    return da - db;
-  });
-
-  writeData(filename, merged);
-  return { added: toAdd.length, total: merged.length };
+  const merged = [...byKey.values()].sort(compare);
+  if (added > 0 || updated > 0) writeJson(filename, merged);
+  return { added, updated, total: merged.length };
 }
 
-/**
- * Obtiene datos filtrados por rango de fechas.
- */
+// Fechas YYYY-MM-DD comparadas como texto: sin desfases de zona horaria
 export function getDataByRange(filename, startDate, endDate, keyField = 'date') {
-  const data = readData(filename);
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-
-  return data.filter((r) => {
-    const d = new Date(r[keyField]);
-    return d >= start && d <= end;
+  return readData(filename).filter((r) => {
+    const d = String(r[keyField]).slice(0, 10);
+    return d >= startDate && d <= endDate;
   });
 }

@@ -1,210 +1,284 @@
 /**
- * Scraper de Endesa usando Playwright.
- *
- * Soporta múltiples contratos. Cada contrato se identifica por un objeto
- * contractConfig con: clientId, contractId, user, password, cookie, sessionId,
- * cookieCacheFile, dataFile, key, label.
+ * Cliente de la API del área cliente de Endesa. Playwright solo se usa para
+ * iniciar sesión y capturar cookies + sessionId; los datos se piden a la API JSON.
  */
 
 import { chromium } from 'playwright';
-import fetch from 'node-fetch';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { readJson, writeJson } from '../utils/dataStore.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// URLs de Endesa
 const LOGIN_URL = 'https://www.endesa.com/es/login';
 const API_BASE = 'https://www.endesaclientes.com';
-const OPEN_DETAILS_PATH = '/neolapi-b2c-consumptions-rest/consumptions/opendetails';
-const DETAILS_PATH = '/neolapi-b2c-consumptions-rest/consumptions/details';
-const PERIOD_LIST_PATH = '/neolapi-b2c-billings-rest/billing/periodlist';
-const POST_LOGIN_URL = 'https://www.endesaclientes.com/oficina/gestion-online.html';
+const POST_LOGIN_URL = `${API_BASE}/oficina/gestion-online.html?neolpostlogin=true`;
+const PATHS = {
+  recent: '/neolapi-b2c-consumptions-rest/consumptions/opendetails',
+  details: '/neolapi-b2c-consumptions-rest/consumptions/details',
+  periods: '/neolapi-b2c-billings-rest/billing/periodlist',
+};
 
-function getCachePath(contractConfig) {
-  return path.join(__dirname, '..', 'data', contractConfig.cookieCacheFile);
+const COOKIE_TTL_MS = 4 * 60 * 60 * 1000;
+const REQUEST_TIMEOUT_MS = 30000;
+const BASE_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+const AUTH_ERROR_HINTS = /sesi[oó]n|session|token|autentic|authori|login|caducad|expir/i;
+
+class EndesaAuthError extends Error {}
+
+let userAgent = BASE_UA;
+
+const log = (cfg, msg) => console.log(`[Endesa/${cfg.key}] ${msg}`);
+
+const toEndesaDate = (iso) => iso.split('-').reverse().join('/');
+
+function fromEndesaDate(value) {
+  const match = String(value).match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : value;
 }
 
-/**
- * Convierte YYYY-MM-DD a DD/MM/YYYY (formato Endesa).
- */
-function toEndesaDate(isoDate) {
-  const [y, m, d] = isoDate.split('-');
-  return `${d}/${m}/${y}`;
+// Un solo login simultáneo por contrato
+const loginsInFlight = new Map();
+
+function login(cfg) {
+  if (!loginsInFlight.has(cfg.key)) {
+    loginsInFlight.set(
+      cfg.key,
+      loginWithBrowser(cfg).finally(() => loginsInFlight.delete(cfg.key)),
+    );
+  }
+  return loginsInFlight.get(cfg.key);
 }
 
-/**
- * Convierte DD/MM/YYYY a YYYY-MM-DD.
- */
-function convertDateFormat(dateStr) {
-  const match = dateStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  if (match) return `${match[3]}-${match[2]}-${match[1]}`;
-  return dateStr;
-}
+async function loginWithBrowser(cfg) {
+  if (!cfg.user || !cfg.password) {
+    throw new EndesaAuthError(`Faltan usuario y contraseña de Endesa para ${cfg.key}`);
+  }
 
-/**
- * Realiza login en Endesa con Playwright y captura cookies + sessionId.
- */
-export async function getEndesaCookies(contractConfig) {
   const browser = await chromium.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled',
+    ],
   });
 
   try {
+    // UA del Chromium real sin la marca "HeadlessChrome", que algunos WAF bloquean
+    userAgent = BASE_UA.replace(
+      /Chrome\/[\d.]+/,
+      `Chrome/${browser.version().split('.')[0]}.0.0.0`,
+    );
     const context = await browser.newContext({
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+      userAgent,
+      locale: 'es-ES',
+      timezoneId: 'Europe/Madrid',
     });
-
     const page = await context.newPage();
+    await page.route(/\.(png|jpe?g|gif|webp|svg|woff2?|ttf|mp4)(\?|$)/i, (route) => route.abort());
 
-    let capturedSessionId = null;
+    let sessionId = null;
     page.on('request', (request) => {
-      const sid = request.headers()['sessionid'];
-      if (sid) capturedSessionId = sid;
+      sessionId = request.headers()['sessionid'] ?? sessionId;
     });
 
-    console.log(`[Endesa/${contractConfig.key}] Navegando a login...`);
+    log(cfg, 'Iniciando sesión...');
     await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    try {
-      const acceptBtn = page.locator('#onetrust-accept-btn-handler');
-      if (await acceptBtn.isVisible({ timeout: 2000 })) {
-        await acceptBtn.click();
-      }
-    } catch { /* No hay banner */ }
+    const cookieBanner = page.locator('#onetrust-accept-btn-handler');
+    if (await cookieBanner.isVisible({ timeout: 3000 }).catch(() => false))
+      await cookieBanner.click();
 
-    console.log(`[Endesa/${contractConfig.key}] Esperando formulario de login...`);
-    const emailInput = page.locator('input[type="email"], input[name="email"], #email, input[name="user"]').first();
+    const emailInput = page
+      .locator('input[type="email"], input[name="email"], #email, input[name="user"]')
+      .first();
     await emailInput.waitFor({ timeout: 15000 });
-    await emailInput.fill(contractConfig.user);
-
-    const passInput = page.locator('input[type="password"], input[name="password"], #password').first();
-    await passInput.fill(contractConfig.password);
-
-    const submitBtn = page.locator('button[type="submit"]').first();
-    await submitBtn.click();
-    console.log(`[Endesa/${contractConfig.key}] Esperando autenticación...`);
+    await emailInput.fill(cfg.user);
+    await page
+      .locator('input[type="password"], input[name="password"], #password')
+      .first()
+      .fill(cfg.password);
+    await page.locator('button[type="submit"]').first().click();
 
     try {
-      await page.waitForURL(url => {
-        const href = url.toString();
-        return href.includes('endesaclientes.com') || href.includes('area-cliente');
-      }, { timeout: 30000 });
+      await page.waitForURL(
+        (url) => url.href.includes('endesaclientes.com') || url.href.includes('area-cliente'),
+        { timeout: 30000 },
+      );
     } catch {
-      console.log(`[Endesa/${contractConfig.key}] Timeout en redirección, continuando...`);
+      if (page.url().includes('/login')) {
+        const message = await page
+          .locator('[role="alert"], .error, .alert-danger, .form-error')
+          .first()
+          .textContent({ timeout: 1000 })
+          .catch(() => null);
+        throw new EndesaAuthError(
+          `Login no completado${message ? `: ${message.trim()}` : ' (¿credenciales incorrectas o captcha?)'}`,
+        );
+      }
     }
 
-    try {
-      await page.goto(POST_LOGIN_URL + '?neolpostlogin=true', {
-        waitUntil: 'domcontentloaded',
-        timeout: 20000,
-      });
-      await page.waitForTimeout(2000);
-    } catch {
-      console.log(`[Endesa/${contractConfig.key}] Timeout en página de consumos, continuando...`);
-    }
+    // La oficina online lanza peticiones con la cabecera `sessionid`
+    const sessionRequest = page
+      .waitForRequest((r) => Boolean(r.headers()['sessionid']), { timeout: 20000 })
+      .catch(() => null);
+    await page
+      .goto(POST_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30000 })
+      .catch(() => {});
+    await sessionRequest;
 
-    const cookies = await context.cookies([
-      'https://www.endesa.com',
-      'https://www.endesaclientes.com',
-    ]);
-    console.log(`[Endesa/${contractConfig.key}] Obtenidas ${cookies.length} cookies`);
-
-    await browser.close();
-
-    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
-    saveCookieCache(contractConfig, { cookieHeader, sessionId: capturedSessionId, timestamp: Date.now() });
-
-    return { cookies, cookieHeader, sessionId: capturedSessionId };
+    const cookies = await context.cookies(['https://www.endesa.com', API_BASE]);
+    const session = {
+      cookieHeader: cookies.map((c) => `${c.name}=${c.value}`).join('; '),
+      sessionId,
+      userAgent,
+      timestamp: Date.now(),
+    };
+    writeJson(cfg.cookieCacheFile, session);
+    log(cfg, `Sesión iniciada (${cookies.length} cookies${sessionId ? ' + sessionId' : ''})`);
+    return session;
   } catch (error) {
+    if (error instanceof EndesaAuthError) throw error;
+    throw new Error(`[Endesa/${cfg.key}] Error en el login: ${error.message}`, { cause: error });
+  } finally {
     await browser.close();
-    throw new Error(`[Endesa/${contractConfig.key}] Error en login: ${error.message}`);
   }
 }
 
-/**
- * Headers comunes para las llamadas a la API de Endesa.
- */
-function getApiHeaders(cookieHeader, sessionId) {
-  return {
-    Cookie: cookieHeader,
-    'Content-Type': 'application/json; charset=UTF-8',
-    Accept: 'application/json, text/javascript, */*; q=0.01',
-    'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
-    Origin: 'https://www.endesaclientes.com',
-    Referer: 'https://www.endesaclientes.com/oficina/gestion-online.html?neolpostlogin=true',
-    'X-Requested-With': 'XMLHttpRequest',
-    lang: '1383137899042',
-    language: 'es',
-    ...(sessionId ? { sessionid: sessionId } : {}),
-  };
+// Cookies del .env > cache vigente > login nuevo
+async function getSession(cfg) {
+  if (cfg.cookie)
+    return { cookieHeader: cfg.cookie, sessionId: cfg.sessionId ?? null, source: 'env' };
+
+  const cached = readJson(cfg.cookieCacheFile, null);
+  if (cached?.cookieHeader && Date.now() - cached.timestamp < COOKIE_TTL_MS) {
+    if (cached.userAgent) userAgent = cached.userAgent;
+    return { ...cached, source: 'cache' };
+  }
+
+  return { ...(await login(cfg)), source: 'login' };
 }
 
-/**
- * Llama al endpoint /opendetails para obtener los últimos ~22 días.
- */
-export async function fetchEndesaRecent(cookieHeader, sessionId, contractConfig) {
-  if (!contractConfig.clientId || !contractConfig.contractId) {
-    throw new Error(`clientId y contractId son requeridos para ${contractConfig.key}`);
+async function apiPost(cfg, apiPath, body, session) {
+  let response;
+  try {
+    response = await fetch(API_BASE + apiPath, {
+      method: 'POST',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      body: JSON.stringify(body),
+      headers: {
+        Cookie: session.cookieHeader,
+        'Content-Type': 'application/json; charset=UTF-8',
+        Accept: 'application/json, text/javascript, */*; q=0.01',
+        'User-Agent': userAgent,
+        Origin: API_BASE,
+        Referer: POST_LOGIN_URL,
+        'X-Requested-With': 'XMLHttpRequest',
+        lang: '1383137899042',
+        language: 'es',
+        ...(session.sessionId && { sessionid: session.sessionId }),
+      },
+    });
+  } catch (err) {
+    throw new Error(`[Endesa/${cfg.key}] Error de red: ${err.message}`, { cause: err });
   }
 
-  const url = `${API_BASE}${OPEN_DETAILS_PATH}`;
-  console.log(`[Endesa/${contractConfig.key}] Pidiendo datos recientes (opendetails)...`);
+  if ([301, 302, 303, 307, 401, 403].includes(response.status)) {
+    throw new EndesaAuthError(`Sesión no válida (HTTP ${response.status})`);
+  }
+  if (!response.ok) throw new Error(`[Endesa/${cfg.key}] HTTP ${response.status}`);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: getApiHeaders(cookieHeader, sessionId),
-    body: JSON.stringify({ clientId: contractConfig.clientId, contractId: contractConfig.contractId, channel: 'EWEB' }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`[Endesa/${contractConfig.key}] API error ${response.status}: ${response.statusText}`);
+  const text = await response.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // Con la sesión caducada Endesa responde con una página HTML
+    if (/<html/i.test(text)) throw new EndesaAuthError('Sesión no válida (respuesta HTML)');
+    throw new Error(`[Endesa/${cfg.key}] Respuesta no JSON`);
   }
 
-  const data = await response.json();
   if (data.errorCode && data.errorCode !== 'ERR-000') {
-    throw new Error(`[Endesa/${contractConfig.key}] API error: ${data.errorDescription || data.errorCode}`);
+    const message = data.errorDescription || data.errorCode;
+    if (AUTH_ERROR_HINTS.test(message)) throw new EndesaAuthError(message);
+    throw new Error(`[Endesa/${cfg.key}] ${message}`);
   }
-
-  console.log(`[Endesa/${contractConfig.key}] Respuesta OK - ${data.consumption?.length || 0} días`);
   return data;
 }
 
+// Si la sesión es rechazada se invalida, se hace login de nuevo y se reintenta una vez
+async function withSession(cfg, apiFn) {
+  const session = await getSession(cfg);
+  try {
+    return await apiFn(session);
+  } catch (err) {
+    const retriable = err instanceof EndesaAuthError || session.source === 'env';
+    if (!retriable || !cfg.user || !cfg.password) throw err;
+
+    log(cfg, `Sesión (${session.source}) rechazada: ${err.message}. Reintentando...`);
+    writeJson(cfg.cookieCacheFile, { timestamp: 0 });
+    return apiFn(await login(cfg));
+  }
+}
+
+function contractBody(cfg) {
+  if (!cfg.clientId || !cfg.contractId) {
+    throw new Error(`Faltan clientId y contractId para ${cfg.key}`);
+  }
+  return { clientId: cfg.clientId, contractId: cfg.contractId, channel: 'EWEB' };
+}
+
 /**
- * Obtiene la lista de períodos de facturación desde la API de Endesa.
+ * Convierte la respuesta de la API en registros diarios. `hour` va de 1 a 24
+ * (la 1 es 00:00-01:00). Los días aún sin lectura llegan a 0 y se descartan.
  */
-export async function fetchEndesaPeriods(cookieHeader, sessionId, contractConfig) {
-  if (!contractConfig.clientId || !contractConfig.contractId) {
-    throw new Error(`clientId y contractId son requeridos para ${contractConfig.key}`);
+export function parseEndesaData(apiResponse) {
+  const records = [];
+
+  for (const day of apiResponse?.consumption ?? []) {
+    const byHour = new Map();
+    for (const fragment of day.barFragments ?? []) {
+      for (const h of fragment.fragmentHours ?? []) {
+        byHour.set(h.hour, (byHour.get(h.hour) ?? 0) + (h.hourConsum || 0));
+      }
+    }
+
+    const hourly = Array.from({ length: 24 }, (_, i) => ({
+      hour: i + 1,
+      kwh: Math.round((byHour.get(i + 1) ?? 0) * 1000) / 1000,
+    }));
+    const totalKwh = Math.round((day.dayConsum || 0) * 1000) / 1000;
+    if (totalKwh === 0 && !hourly.some((h) => h.kwh > 0)) continue;
+
+    records.push({
+      date: fromEndesaDate(day.date),
+      totalKwh,
+      hourly,
+      fragments: (day.barFragments ?? [])
+        .filter((f) => f.fragmentConsum > 0)
+        .map((f) => ({
+          consum: f.fragmentConsum,
+          hours: (f.fragmentHours ?? []).map((h) => h.hour),
+        })),
+      source: 'endesa',
+    });
   }
 
-  const url = `${API_BASE}${PERIOD_LIST_PATH}`;
-  console.log(`[Endesa/${contractConfig.key}] Pidiendo lista de períodos de facturación...`);
+  return records.sort((a, b) => a.date.localeCompare(b.date));
+}
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: getApiHeaders(cookieHeader, sessionId),
-    body: JSON.stringify({ clientId: contractConfig.clientId, contractId: contractConfig.contractId, channel: 'EWEB' }),
-  });
+// Últimos ~22 días
+export async function scrapeEndesa(cfg) {
+  const raw = await withSession(cfg, (s) => apiPost(cfg, PATHS.recent, contractBody(cfg), s));
+  log(cfg, `${raw.consumption?.length ?? 0} días recientes`);
+  return parseEndesaData(raw);
+}
 
-  if (!response.ok) {
-    throw new Error(`[Endesa/${contractConfig.key}] Periodlist API error ${response.status}: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  if (data.errorCode && data.errorCode !== 'ERR-000') {
-    throw new Error(`[Endesa/${contractConfig.key}] Periodlist error: ${data.errorDescription || data.errorCode}`);
-  }
-
-  const periods = (data.periodList || []).map((p) => ({
-    from: convertDateFormat(p.invoicedPeriod.from),
-    to: convertDateFormat(p.invoicedPeriod.to),
-    isCurrent: p.isCurrentPeriod,
+export async function scrapeEndesaPeriods(cfg) {
+  const data = await withSession(cfg, (s) => apiPost(cfg, PATHS.periods, contractBody(cfg), s));
+  const periods = (data.periodList ?? []).map((p) => ({
+    from: fromEndesaDate(p.invoicedPeriod.from),
+    to: fromEndesaDate(p.invoicedPeriod.to),
+    isCurrent: Boolean(p.isCurrentPeriod),
     billSequence: p.billSequence ?? 0,
     codFactAtr: p.codFactAtr,
     contractNumber: p.contractNumber,
@@ -212,187 +286,23 @@ export async function fetchEndesaPeriods(cookieHeader, sessionId, contractConfig
     codCompany: p.codCompany,
     billNumber: p.billNumber,
   }));
-
-  console.log(`[Endesa/${contractConfig.key}] ${periods.length} períodos obtenidos`);
-  return { periods, consumptionMean: data.consumptionMean };
+  log(cfg, `${periods.length} períodos`);
+  return { periods, consumptionMean: data.consumptionMean ?? null };
 }
 
-/**
- * Llama al endpoint /details para obtener datos de un período de facturación.
- */
-export async function fetchEndesaByPeriod(cookieHeader, sessionId, period, contractConfig) {
-  if (!contractConfig.clientId) {
-    throw new Error(`clientId es requerido para ${contractConfig.key}`);
-  }
-
-  const url = `${API_BASE}${DETAILS_PATH}`;
+export async function scrapeEndesaByPeriod(period, cfg) {
+  if (!cfg.clientId) throw new Error(`Falta clientId para ${cfg.key}`);
   const body = {
     billSec: period.billSequence || 0,
     channel: 'EWEB',
-    clientId: contractConfig.clientId,
+    clientId: cfg.clientId,
     codCompany: period.codCompany || '20',
     codigoFiscalFactura: period.codFactAtr || '',
     contract: period.contractNumber || '',
     startDate: toEndesaDate(period.from),
     endDate: toEndesaDate(period.to),
   };
-
-  console.log(`[Endesa/${contractConfig.key}] Pidiendo datos del período ${body.startDate} - ${body.endDate} (details)...`);
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: getApiHeaders(cookieHeader, sessionId),
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(`[Endesa/${contractConfig.key}] API error ${response.status}: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  if (data.errorCode && data.errorCode !== 'ERR-000' && data.errorCode !== null) {
-    throw new Error(`[Endesa/${contractConfig.key}] API error: ${data.errorDescription || data.errorCode}`);
-  }
-
-  console.log(`[Endesa/${contractConfig.key}] Respuesta OK - ${data.consumption?.length || 0} días`);
-  return data;
-}
-
-/**
- * Parsea la respuesta de la API de Endesa (funciona para ambos endpoints).
- * Usa dayConsum como total (el valor oficial que muestra Endesa).
- */
-export function parseEndesaData(apiResponse) {
-  const records = [];
-  const consumption = apiResponse?.consumption || [];
-
-  consumption.forEach((day) => {
-    const date = convertDateFormat(day.date);
-    const totalKwh = day.dayConsum || 0;
-
-    const hourlyMap = new Map();
-    if (day.barFragments) {
-      day.barFragments.forEach((fragment) => {
-        if (fragment.fragmentHours) {
-          fragment.fragmentHours.forEach((h) => {
-            const existing = hourlyMap.get(h.hour) || 0;
-            hourlyMap.set(h.hour, existing + (h.hourConsum || 0));
-          });
-        }
-      });
-    }
-
-    const hourly = [];
-    for (let h = 1; h <= 24; h++) {
-      hourly.push({
-        hour: h,
-        kwh: Math.round((hourlyMap.get(h) || 0) * 1000) / 1000,
-      });
-    }
-
-    const fragments = (day.barFragments || [])
-      .filter((f) => f.fragmentConsum > 0)
-      .map((f) => ({
-        consum: f.fragmentConsum,
-        hours: (f.fragmentHours || []).map((h) => h.hour),
-      }));
-
-    records.push({
-      date,
-      totalKwh: Math.round(totalKwh * 1000) / 1000,
-      hourly,
-      fragments,
-      source: 'endesa',
-    });
-  });
-
-  records.sort((a, b) => a.date.localeCompare(b.date));
-  return records;
-}
-
-// --- Cache de cookies por contrato ---
-
-function saveCookieCache(contractConfig, data) {
-  try {
-    fs.writeFileSync(getCachePath(contractConfig), JSON.stringify(data, null, 2), 'utf-8');
-  } catch { /* ignorar */ }
-}
-
-function loadCookieCache(contractConfig) {
-  try {
-    const cachePath = getCachePath(contractConfig);
-    if (fs.existsSync(cachePath)) {
-      return JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
-    }
-  } catch { /* ignorar */ }
-  return null;
-}
-
-/**
- * Obtiene cookies para un contrato: .env manual > cache > Playwright.
- */
-export async function getCookiesWithFallback(contractConfig) {
-  if (contractConfig.cookie) {
-    console.log(`[Endesa/${contractConfig.key}] Usando cookies del .env (modo manual)`);
-    return {
-      cookieHeader: contractConfig.cookie,
-      sessionId: contractConfig.sessionId || null,
-    };
-  }
-
-  const cached = loadCookieCache(contractConfig);
-  if (cached && (Date.now() - cached.timestamp) < 4 * 60 * 60 * 1000) {
-    console.log(`[Endesa/${contractConfig.key}] Usando cookies cacheadas`);
-    return { cookieHeader: cached.cookieHeader, sessionId: cached.sessionId };
-  }
-
-  console.log(`[Endesa/${contractConfig.key}] Obteniendo cookies con Playwright...`);
-  const result = await getEndesaCookies(contractConfig);
-  return { cookieHeader: result.cookieHeader, sessionId: result.sessionId };
-}
-
-/**
- * Reintenta con Playwright si las cookies del .env fallan.
- */
-async function withCookieRetry(contractConfig, apiFn) {
-  const { cookieHeader, sessionId } = await getCookiesWithFallback(contractConfig);
-  try {
-    return await apiFn(cookieHeader, sessionId);
-  } catch (err) {
-    if (contractConfig.cookie) {
-      console.log(`[Endesa/${contractConfig.key}] Cookies del .env fallaron, reintentando con Playwright...`);
-      const fresh = await getEndesaCookies(contractConfig);
-      return await apiFn(fresh.cookieHeader, fresh.sessionId);
-    }
-    throw err;
-  }
-}
-
-/**
- * Flujo completo: obtener datos recientes (últimos ~22 días).
- */
-export async function scrapeEndesa(contractConfig) {
-  const raw = await withCookieRetry(contractConfig, (cookie, sid) =>
-    fetchEndesaRecent(cookie, sid, contractConfig)
-  );
-  return parseEndesaData(raw);
-}
-
-/**
- * Flujo completo: obtener lista de períodos de facturación.
- */
-export async function scrapeEndesaPeriods(contractConfig) {
-  return withCookieRetry(contractConfig, (cookie, sid) =>
-    fetchEndesaPeriods(cookie, sid, contractConfig)
-  );
-}
-
-/**
- * Flujo completo: obtener datos de un período de facturación específico.
- */
-export async function scrapeEndesaByPeriod(period, contractConfig) {
-  const raw = await withCookieRetry(contractConfig, (cookie, sid) =>
-    fetchEndesaByPeriod(cookie, sid, period, contractConfig)
-  );
+  const raw = await withSession(cfg, (s) => apiPost(cfg, PATHS.details, body, s));
+  log(cfg, `Período ${body.startDate} - ${body.endDate}: ${raw.consumption?.length ?? 0} días`);
   return parseEndesaData(raw);
 }

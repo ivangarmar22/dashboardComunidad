@@ -1,43 +1,166 @@
 /**
- * Scraper para el portal "Mi Empresa" de Endesa (Salesforce Aura).
- * Obtiene el historial de facturas de electricidad.
+ * Historial de facturas del portal "Mi Empresa" de Endesa (Salesforce Aura).
+ * Sesión: tokens del .env > sesión cacheada > login con Playwright, que captura
+ * `aura.token` y `aura.context` de las propias peticiones de la página.
  */
 
-import fetch from 'node-fetch';
+import { chromium } from 'playwright';
 import { BILLING_CONFIG } from '../config/endesa-contracts.js';
+import { readJson, writeJson } from '../utils/dataStore.js';
 
-const AURA_URL = 'https://endesa-atenea.my.site.com/miempresa/s/sfsites/aura';
+const SITE_ORIGIN = 'https://endesa-atenea.my.site.com';
+const SITE_BASE = `${SITE_ORIGIN}/miempresa/s/`;
+const AURA_URL = `${SITE_BASE}sfsites/aura`;
+const SESSION_CACHE_FILE = '.endesa-billing-session.json';
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
+// Solo se usa si no se ha podido capturar la versión real de la app
+const DEFAULT_APP_LOADED = {
+  'APPLICATION@markup://siteforce:communityApp': '1529_lI95rFcxq-le9BLgryC1ew',
+};
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 
-/**
- * Llama al endpoint Aura para obtener el historial de facturas.
- */
-export async function fetchBillingHistory(config = BILLING_CONFIG) {
-  if (!config.cookie || !config.auraToken) {
-    throw new Error('Billing: cookie y auraToken son requeridos en .env');
+class BillingAuthError extends Error {}
+
+function envSession(config) {
+  if (!config.cookie || !config.auraToken) return null;
+  return {
+    cookie: config.cookie,
+    auraToken: config.auraToken,
+    fwuid: config.auraFwuid,
+    loaded: DEFAULT_APP_LOADED,
+    source: 'env',
+  };
+}
+
+function cachedSession() {
+  const cached = readJson(SESSION_CACHE_FILE, null);
+  if (cached?.auraToken && Date.now() - cached.timestamp < SESSION_TTL_MS) {
+    return { ...cached, source: 'cache' };
+  }
+  return null;
+}
+
+let loginInFlight = null;
+
+function login(config) {
+  loginInFlight ??= loginWithBrowser(config).finally(() => {
+    loginInFlight = null;
+  });
+  return loginInFlight;
+}
+
+async function loginWithBrowser(config) {
+  if (!config.user || !config.password) {
+    throw new BillingAuthError('Faltan ENDESA_BILLING_USER y ENDESA_BILLING_PASSWORD');
   }
 
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled',
+    ],
+  });
+
+  try {
+    const context = await browser.newContext({
+      userAgent: USER_AGENT,
+      locale: 'es-ES',
+      timezoneId: 'Europe/Madrid',
+    });
+    const page = await context.newPage();
+
+    console.log('[Endesa/Billing] Iniciando sesión en Mi Empresa...');
+    await page.goto(`${SITE_BASE}login/`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+
+    const cookieBanner = page.locator('#onetrust-accept-btn-handler');
+    if (await cookieBanner.isVisible({ timeout: 3000 }).catch(() => false))
+      await cookieBanner.click();
+
+    const userInput = page
+      .locator(
+        'input[name="username"], input[type="email"], input[autocomplete="username"], input[placeholder*="suario" i]',
+      )
+      .first();
+    await userInput.waitFor({ timeout: 20000 });
+    await userInput.fill(config.user);
+    await page.locator('input[type="password"]').first().fill(config.password);
+    await page
+      .locator(
+        'button[type="submit"], button:has-text("Acceder"), button:has-text("Iniciar"), button:has-text("Entrar")',
+      )
+      .first()
+      .click();
+
+    try {
+      await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 45000 });
+    } catch {
+      throw new BillingAuthError('Login no completado (¿credenciales incorrectas o captcha?)');
+    }
+
+    // Cualquier llamada Aura de la portada lleva el token y el contexto
+    const auraRequest = page
+      .waitForRequest(
+        (r) =>
+          r.url().includes('/sfsites/aura') &&
+          r.method() === 'POST' &&
+          /aura\.token=/.test(r.postData() ?? ''),
+        { timeout: 45000 },
+      )
+      .catch(() => null);
+    if (!page.url().startsWith(SITE_BASE)) {
+      await page.goto(SITE_BASE, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    }
+    const request = await auraRequest;
+    if (!request) throw new Error('No se capturó ninguna petición Aura tras el login');
+
+    const params = new URLSearchParams(request.postData());
+    const auraContext = JSON.parse(params.get('aura.context') || '{}');
+    const cookies = await context.cookies([SITE_ORIGIN]);
+
+    const session = {
+      cookie: cookies.map((c) => `${c.name}=${c.value}`).join('; '),
+      auraToken: params.get('aura.token'),
+      fwuid: auraContext.fwuid,
+      loaded: auraContext.loaded ?? DEFAULT_APP_LOADED,
+      timestamp: Date.now(),
+    };
+    writeJson(SESSION_CACHE_FILE, session);
+    console.log('[Endesa/Billing] Sesión iniciada');
+    return { ...session, source: 'login' };
+  } catch (error) {
+    if (error instanceof BillingAuthError) throw error;
+    throw new Error(`[Endesa/Billing] Error en el login: ${error.message}`, { cause: error });
+  } finally {
+    await browser.close();
+  }
+}
+
+async function requestInvoices(session, config) {
   const message = JSON.stringify({
-    actions: [{
-      id: '314;a',
-      descriptor: 'apex://PA_ListaFacturasController/ACTION$getHistoricoFacturas_Monopunto',
-      callingDescriptor: 'markup://c:PA_HistoricoFacturas_Monopunto',
-      params: {
-        contractId: config.sfContractId,
-        lNegocio: 'Electricidad',
-        fechaDesde: null,
-        fechaHasta: null,
+    actions: [
+      {
+        id: '314;a',
+        descriptor: 'apex://PA_ListaFacturasController/ACTION$getHistoricoFacturas_Monopunto',
+        callingDescriptor: 'markup://c:PA_HistoricoFacturas_Monopunto',
+        params: {
+          contractId: config.sfContractId,
+          lNegocio: 'Electricidad',
+          fechaDesde: null,
+          fechaHasta: null,
+        },
+        version: null,
       },
-      version: null,
-    }],
+    ],
   });
 
   const auraContext = JSON.stringify({
     mode: 'PROD',
-    fwuid: config.auraFwuid,
+    fwuid: session.fwuid,
     app: 'siteforce:communityApp',
-    loaded: {
-      'APPLICATION@markup://siteforce:communityApp': '1529_lI95rFcxq-le9BLgryC1ew',
-    },
+    loaded: session.loaded ?? DEFAULT_APP_LOADED,
     dn: [],
     globals: {},
     uad: true,
@@ -47,47 +170,84 @@ export async function fetchBillingHistory(config = BILLING_CONFIG) {
     message,
     'aura.context': auraContext,
     'aura.pageURI': '/miempresa/s/',
-    'aura.token': config.auraToken,
+    'aura.token': session.auraToken,
   });
-
-  console.log('[Endesa/Billing] Pidiendo historial de facturas...');
 
   const response = await fetch(
     `${AURA_URL}?r=6&other.PA_ListaFacturas.getHistoricoFacturas_Monopunto=1`,
     {
       method: 'POST',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(30000),
+      body: body.toString(),
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        Cookie: config.cookie,
-        Origin: 'https://endesa-atenea.my.site.com',
-        Referer: 'https://endesa-atenea.my.site.com/miempresa/s/',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+        Cookie: session.cookie,
+        Origin: SITE_ORIGIN,
+        Referer: SITE_BASE,
+        'User-Agent': USER_AGENT,
       },
-      body: body.toString(),
-    }
+    },
   );
 
-  if (!response.ok) {
-    throw new Error(`[Endesa/Billing] HTTP ${response.status}: ${response.statusText}`);
+  if ([301, 302, 401, 403].includes(response.status)) {
+    throw new BillingAuthError(`Sesión no válida (HTTP ${response.status})`);
+  }
+  if (!response.ok) throw new Error(`[Endesa/Billing] HTTP ${response.status}`);
+
+  // Aura antepone "while(1);" a algunas respuestas
+  const text = (await response.text()).replace(/^\s*while\(1\);\s*/, '');
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new BillingAuthError('Respuesta no JSON (sesión caducada)');
   }
 
-  const data = await response.json();
-
-  if (!data.actions || !data.actions[0] || data.actions[0].state !== 'SUCCESS') {
-    const errMsg = data.actions?.[0]?.error?.[0]?.message || 'Respuesta no exitosa';
-    throw new Error(`[Endesa/Billing] ${errMsg}`);
+  const descriptor = data.event?.descriptor ?? '';
+  const exception = data.exceptionEvent ? JSON.stringify(data) : '';
+  if (/invalidSession|clientOutOfSync/i.test(descriptor + exception)) {
+    throw new BillingAuthError(`Sesión Aura no válida (${descriptor || 'exception'})`);
   }
 
-  const rawInvoices = JSON.parse(data.actions[0].returnValue);
-  console.log(`[Endesa/Billing] ${rawInvoices.length} facturas obtenidas`);
+  const action = data.actions?.[0];
+  if (action?.state !== 'SUCCESS') {
+    throw new Error(`[Endesa/Billing] ${action?.error?.[0]?.message ?? 'Respuesta no exitosa'}`);
+  }
 
-  return rawInvoices.map((inv) => ({
-    numFact: inv.numFact,
-    importe: inv.importe,
-    consumo: inv.consumo,
-    fEmision: inv.fEmision,
-    cups: inv.CUPS,
-    digital: inv.digital,
-    codigoDescarga: inv.codigoFactDescarga,
-  })).sort((a, b) => b.fEmision.localeCompare(a.fEmision));
+  const raw =
+    typeof action.returnValue === 'string' ? JSON.parse(action.returnValue) : action.returnValue;
+  console.log(`[Endesa/Billing] ${raw.length} facturas (sesión: ${session.source})`);
+
+  return raw
+    .map((inv) => ({
+      numFact: inv.numFact,
+      importe: Number(inv.importe),
+      consumo: Number(inv.consumo),
+      fEmision: inv.fEmision,
+      cups: inv.CUPS,
+      digital: inv.digital,
+      codigoDescarga: inv.codigoFactDescarga,
+    }))
+    .filter((inv) => inv.numFact && inv.fEmision);
+}
+
+export async function fetchBillingHistory(config = BILLING_CONFIG) {
+  if (!config.sfContractId) throw new Error('Falta ENDESA_BILLING_SF_CONTRACT_ID');
+
+  let lastError = null;
+  for (const session of [envSession(config), cachedSession()].filter(Boolean)) {
+    try {
+      return await requestInvoices(session, config);
+    } catch (err) {
+      if (!(err instanceof BillingAuthError)) throw err;
+      lastError = err;
+      console.log(`[Endesa/Billing] Sesión ${session.source} rechazada: ${err.message}`);
+    }
+  }
+
+  if (!config.user || !config.password) {
+    throw lastError ?? new Error('Configura usuario y contraseña o cookie + auraToken en .env');
+  }
+  return requestInvoices(await login(config), config);
 }

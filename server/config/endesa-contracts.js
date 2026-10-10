@@ -1,41 +1,28 @@
-import dotenv from 'dotenv';
-dotenv.config();
+function contractFromEnv(key, label) {
+  const prefix = `ENDESA_${key.toUpperCase()}_`;
+  const env = (name) => process.env[prefix + name];
+  return {
+    key,
+    label,
+    user: env('USER'),
+    password: env('PASSWORD'),
+    clientId: env('CLIENT_ID'),
+    contractId: env('CONTRACT_ID'),
+    cookie: env('COOKIE'),
+    sessionId: env('SESSION_ID'),
+    dataFile: `endesa-${key}.json`,
+    cookieCacheFile: `.endesa-${key}-cookies.json`,
+  };
+}
 
 const CONTRACTS = {
-  comunes: {
-    key: 'comunes',
-    label: 'Zonas Comunes',
-    user: process.env.ENDESA_COMUNES_USER,
-    password: process.env.ENDESA_COMUNES_PASSWORD,
-    clientId: process.env.ENDESA_COMUNES_CLIENT_ID,
-    contractId: process.env.ENDESA_COMUNES_CONTRACT_ID,
-    cookie: process.env.ENDESA_COMUNES_COOKIE,
-    sessionId: process.env.ENDESA_COMUNES_SESSION_ID,
-    dataFile: 'endesa-comunes.json',
-    cookieCacheFile: '.endesa-comunes-cookies.json',
-  },
-  portales: {
-    key: 'portales',
-    label: 'Portales',
-    user: process.env.ENDESA_PORTALES_USER,
-    password: process.env.ENDESA_PORTALES_PASSWORD,
-    clientId: process.env.ENDESA_PORTALES_CLIENT_ID,
-    contractId: process.env.ENDESA_PORTALES_CONTRACT_ID,
-    cookie: process.env.ENDESA_PORTALES_COOKIE,
-    sessionId: process.env.ENDESA_PORTALES_SESSION_ID,
-    dataFile: 'endesa-portales.json',
-    cookieCacheFile: '.endesa-portales-cookies.json',
-  },
+  comunes: contractFromEnv('comunes', 'Zonas Comunes'),
+  portales: contractFromEnv('portales', 'Portales'),
 };
 
 export function getContract(key) {
-  const contract = CONTRACTS[key];
-  if (!contract) throw new Error(`Contrato desconocido: ${key}`);
-  return contract;
-}
-
-export function getAllContracts() {
-  return Object.values(CONTRACTS).map((c) => ({ key: c.key, label: c.label }));
+  if (!Object.hasOwn(CONTRACTS, key)) throw new Error(`Contrato desconocido: ${key}`);
+  return CONTRACTS[key];
 }
 
 export const BILLING_CONFIG = {

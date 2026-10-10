@@ -1,114 +1,240 @@
-import React, { useMemo } from 'react';
-import ServiceCard from './ServiceCard.jsx';
-import MonthlyComparisonChart from './MonthlyComparisonChart.jsx';
-import BillingTable from './BillingTable.jsx';
+import { useCallback, useMemo } from 'react';
 import { useConsumption } from '../hooks/useConsumption.js';
 import { useBilling } from '../hooks/useBilling.js';
-import { fmtNum } from '../utils/format.js';
-import { BuildingIcon, HomeIcon, EuroIcon } from './Icons.jsx';
+import { useTheme } from '../theme.jsx';
+import BarChart from '../charts/BarChart.jsx';
+import MonthlyAverageChart from '../charts/MonthlyAverageChart.jsx';
+import Sparkline from '../charts/Sparkline.jsx';
+import BillingTable from './BillingTable.jsx';
+import { Stat, Delta, Section, Panel, Empty } from './ui.jsx';
+import {
+  summarize,
+  change,
+  monthlyFromDays,
+  invoiceStats,
+  daysBetween,
+} from '../utils/analytics.js';
+import {
+  fmtNum,
+  fmtNum0,
+  fmtNum1,
+  fmtPrice,
+  fmtPct,
+  fmtEur,
+  fmtDate,
+  fmtDayMonth,
+} from '../utils/format.js';
 
-function OverviewTab() {
-  const fullRange = useMemo(() => {
-    const today = new Date();
-    const yearAgo = new Date(today);
-    yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-    return {
-      start: yearAgo.toISOString().split('T')[0],
-      end: today.toISOString().split('T')[0],
-    };
-  }, []);
+const WINDOW_DAYS = 30;
 
-  const portales = useConsumption('endesa', fullRange, 300000, 'portales');
+function ContractCard({ entity, name, onOpen, children }) {
+  return (
+    <article className={`contract entity-${entity}`}>
+      <header className="contract-head">
+        <span className="contract-name">
+          <span className="legend-key" style={{ background: 'var(--entity)' }} />
+          {name}
+        </span>
+        <button type="button" className="contract-link" onClick={onOpen}>
+          Ver detalle
+        </button>
+      </header>
+      {children}
+    </article>
+  );
+}
+
+function OverviewTab({ onNavigate }) {
+  const { tokens: t } = useTheme();
+  const portales = useConsumption('portales');
   const billing = useBilling();
+  const { invoices } = billing;
 
-  // Últimos 30 días de portales (filtrado del rango completo)
-  const last30 = useMemo(() => {
-    if (portales.data.length === 0) return [];
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 30);
-    const cutoffStr = cutoff.toISOString().split('T')[0];
-    return portales.data.filter(d => d.date >= cutoffStr);
-  }, [portales.data]);
+  const recent = useMemo(() => portales.data.slice(-WINDOW_DAYS), [portales.data]);
+  const before = useMemo(
+    () => portales.data.slice(-WINDOW_DAYS * 2, -WINDOW_DAYS),
+    [portales.data],
+  );
+  const recentSummary = useMemo(() => summarize(recent), [recent]);
+  const beforeSummary = before.length >= WINDOW_DAYS * 0.8 ? summarize(before) : null;
+  const monthly = useMemo(() => monthlyFromDays(portales.data), [portales.data]);
 
-  const totalKwhPortales = useMemo(
-    () => last30.reduce((s, d) => s + (d.totalKwh || 0), 0),
-    [last30]
+  const [lastInvoice, previousInvoice] = invoices;
+  const stats = useMemo(() => invoiceStats(invoices), [invoices]);
+  const chrono = useMemo(() => [...invoices].reverse(), [invoices]);
+  const invoiceLabels = useMemo(() => chrono.map((i) => fmtDayMonth(i.fEmision)), [chrono]);
+  const invoiceKwh = useMemo(() => chrono.map((i) => i.consumo), [chrono]);
+  const invoiceTitle = useCallback((i) => `Factura del ${fmtDate(chrono[i].fEmision)}`, [chrono]);
+  const invoiceLabel = useCallback(
+    (i) => `${fmtNum0(chrono[i].consumo)} kWh · ${fmtEur(chrono[i].importe)} €`,
+    [chrono],
   );
 
-  const lastInvoice = billing.invoices.length > 0 ? billing.invoices[0] : null;
+  const invoiceDelta = previousInvoice && change(lastInvoice.importe, previousInvoice.importe);
+  const portalesDelta = beforeSummary && change(recentSummary.avgKwh, beforeSummary.avgKwh);
 
-  const totalFacturado = useMemo(
-    () => billing.invoices.reduce((s, i) => s + (i.importe || 0), 0),
-    [billing.invoices]
-  );
-  const totalConsumoFacturado = useMemo(
-    () => billing.invoices.reduce((s, i) => s + (i.consumo || 0), 0),
-    [billing.invoices]
-  );
-
-  const comunesMonthly = useMemo(() => {
-    if (billing.invoices.length === 0) return [];
-    return billing.invoices.map((inv) => ({
-      month: inv.fEmision.substring(0, 7),
-      totalKwh: inv.consumo,
-    })).sort((a, b) => a.month.localeCompare(b.month));
-  }, [billing.invoices]);
+  // kWh/día de zonas comunes según facturas frente a los portales
+  const comunesPerDay =
+    invoices.length > 1
+      ? stats.totalConsumo /
+        (daysBetween(invoices.at(-1).fEmision, invoices[0].fEmision) + WINDOW_DAYS)
+      : null;
+  const scaleRatio =
+    comunesPerDay && recentSummary?.avgKwh ? comunesPerDay / recentSummary.avgKwh : null;
+  const isEmpty = !lastInvoice && !recentSummary && !billing.loading && !portales.loading;
 
   return (
     <div>
-      <div className="dashboard-grid dashboard-grid-3">
-        <ServiceCard
-          title="Zonas Comunes"
-          icon={<BuildingIcon />}
-          badge="Última factura"
-          badgeClass="badge-blue"
-          value={lastInvoice ? fmtNum(lastInvoice.consumo) : '--'}
-          unit="kWh"
-          label={lastInvoice
-            ? `${new Date(lastInvoice.fEmision).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })} · ${fmtNum(lastInvoice.importe)} €`
-            : 'Sin datos'}
-          loading={billing.loading}
-          error={billing.error}
-          color="var(--accent-blue)"
-        />
-        <ServiceCard
-          title="Portales"
-          icon={<HomeIcon />}
-          badge="Últimos 30 días"
-          badgeClass="badge-blue"
-          value={totalKwhPortales > 0 ? fmtNum(totalKwhPortales) : '--'}
-          unit="kWh"
-          label={last30.length > 0
-            ? `Media: ${fmtNum(totalKwhPortales / last30.length)} kWh/día`
-            : 'Sin datos'}
-          loading={portales.loading}
-          error={portales.error}
-          color="var(--accent-blue)"
-        />
-        <ServiceCard
-          title="Total Facturado"
-          icon={<EuroIcon />}
-          badge={`${billing.invoices.length} facturas`}
-          badgeClass="badge-blue"
-          value={totalFacturado > 0 ? fmtNum(totalFacturado) : '--'}
-          unit="€"
-          label={totalConsumoFacturado > 0
-            ? `${fmtNum(totalConsumoFacturado)} kWh consumidos`
-            : 'Sin datos'}
-          loading={billing.loading}
-          error={billing.error}
-          color="var(--accent-yellow)"
-        />
+      <div className="page-intro">
+        <div className="page-kicker">Resumen</div>
+        <h2 className="page-title">Electricidad de la comunidad</h2>
+        <p className="lede">
+          {lastInvoice && (
+            <>
+              La última factura de zonas comunes, del{' '}
+              <strong>{fmtDate(lastInvoice.fEmision)}</strong>, fue de{' '}
+              <strong>{fmtEur(lastInvoice.importe)}&nbsp;€</strong>
+              {invoiceDelta != null && (
+                <>
+                  {' '}
+                  ({invoiceDelta < 0 ? 'baja' : 'sube'} un {fmtPct(Math.abs(invoiceDelta))} respecto
+                  a la anterior)
+                </>
+              )}
+              .{' '}
+            </>
+          )}
+          {recentSummary && (
+            <>
+              Los portales gastan <strong>{fmtNum(recentSummary.avgKwh)}&nbsp;kWh al día</strong> de
+              media en los últimos {recentSummary.days} días con lectura.
+            </>
+          )}
+          {isEmpty && 'Todavía no hay datos guardados.'}
+        </p>
       </div>
 
-      <h2 className="section-title">Comparativa Mensual</h2>
-      <MonthlyComparisonChart
-        comunesMonthly={comunesMonthly}
-        portalesMonthly={portales.monthly}
-      />
+      <div className="contracts">
+        <ContractCard entity="comunes" name="Zonas comunes" onOpen={() => onNavigate('comunes')}>
+          <div className="contract-figures">
+            <Stat
+              label="Última factura"
+              value={lastInvoice && fmtEur(lastInvoice.importe)}
+              unit="€"
+              loading={billing.loading}
+              foot={invoiceDelta != null && <Delta value={invoiceDelta} suffix="vs. anterior" />}
+            />
+            <Stat
+              label="Consumo facturado"
+              value={lastInvoice && fmtNum0(lastInvoice.consumo)}
+              unit="kWh"
+              loading={billing.loading}
+              foot={lastInvoice && `${fmtPrice(lastInvoice.pricePerKwh)} €/kWh`}
+            />
+          </div>
+          <Sparkline
+            values={chrono.map((i) => i.importe)}
+            label="Tendencia del importe de las facturas"
+          />
+          {stats && (
+            <p className="panel-caption">
+              {stats.count} facturas · {fmtEur(stats.totalImporte)}&nbsp;€ en total ·{' '}
+              {fmtPrice(stats.avgPrice)}&nbsp;€/kWh de media
+            </p>
+          )}
+        </ContractCard>
 
-      <h2 className="section-title">Últimas Facturas - Zonas Comunes</h2>
-      <BillingTable invoices={billing.invoices} loading={billing.loading} error={billing.error} />
+        <ContractCard entity="portales" name="Portales 1–7" onOpen={() => onNavigate('portales')}>
+          <div className="contract-figures">
+            <Stat
+              label={`Últimos ${recentSummary?.days ?? WINDOW_DAYS} días`}
+              value={recentSummary && fmtNum1(recentSummary.totalKwh)}
+              unit="kWh"
+              loading={portales.loading}
+              foot={recent.length > 0 && `hasta el ${fmtDayMonth(recent.at(-1).date)}`}
+            />
+            <Stat
+              label="Media diaria"
+              value={recentSummary && fmtNum(recentSummary.avgKwh)}
+              unit="kWh"
+              loading={portales.loading}
+              foot={
+                portalesDelta != null && (
+                  <Delta value={portalesDelta} suffix={`vs. ${before.length} días previos`} />
+                )
+              }
+            />
+          </div>
+          <Sparkline
+            values={portales.data.slice(-60).map((d) => d.totalKwh)}
+            label="Consumo diario de los últimos 60 días"
+          />
+          {recentSummary?.baseLoadKw != null && (
+            <p className="panel-caption">
+              Consumo de fondo ~{fmtNum0(recentSummary.baseLoadKw * 1000)}&nbsp;W, el{' '}
+              {fmtPct(recentSummary.baseShare)} del total
+            </p>
+          )}
+        </ContractCard>
+      </div>
+
+      <Section
+        num="01"
+        title="Evolución"
+        note={
+          scaleRatio
+            ? `Cada contrato con su propia escala: las zonas comunes consumen unas ${fmtNum0(scaleRatio)} veces más que los portales.`
+            : 'Cada contrato con su propia escala, porque sus consumos no son comparables.'
+        }
+      >
+        <div className="grid-halves">
+          <Panel
+            title="Zonas comunes · kWh por factura"
+            refreshing={billing.refreshing}
+            className="entity-comunes"
+          >
+            {chrono.length > 0 ? (
+              <BarChart
+                labels={invoiceLabels}
+                values={invoiceKwh}
+                colors={t.comunes}
+                tooltipTitle={invoiceTitle}
+                tooltipLabel={invoiceLabel}
+                short
+                ariaLabel="Consumo de zonas comunes por factura"
+              />
+            ) : (
+              <Empty>{billing.loading ? 'Cargando…' : 'Sin facturas'}</Empty>
+            )}
+          </Panel>
+          <Panel
+            title="Portales · media diaria por mes"
+            refreshing={portales.refreshing}
+            className="entity-portales"
+          >
+            {monthly.length > 0 ? (
+              <MonthlyAverageChart monthly={monthly} color={t.portales} />
+            ) : (
+              <Empty>{portales.loading ? 'Cargando…' : 'Sin datos'}</Empty>
+            )}
+          </Panel>
+        </div>
+      </Section>
+
+      <Section
+        num="02"
+        title="Últimas facturas de zonas comunes"
+        aside={stats?.outliers.length > 0 && `${stats.outliers.length} a revisar`}
+      >
+        <div className="entity-comunes">
+          <BillingTable
+            invoices={invoices}
+            loading={billing.loading}
+            error={billing.error}
+            limit={6}
+          />
+        </div>
+      </Section>
     </div>
   );
 }

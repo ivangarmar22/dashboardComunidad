@@ -1,58 +1,117 @@
-import React, { useState } from 'react';
-import Dashboard from './components/Dashboard.jsx';
+import { useEffect, useState } from 'react';
 import OverviewTab from './components/OverviewTab.jsx';
+import ContractView from './components/ContractView.jsx';
+import SyncStatus from './components/SyncStatus.jsx';
+import { useTheme } from './theme.jsx';
 
-const tabIcons = {
-  overview: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
-    </svg>
-  ),
-  comunes: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="2" width="16" height="20" rx="2" /><line x1="9" y1="6" x2="11" y2="6" /><line x1="13" y1="6" x2="15" y2="6" /><line x1="9" y1="10" x2="11" y2="10" /><line x1="13" y1="10" x2="15" y2="10" /><line x1="9" y1="14" x2="11" y2="14" /><line x1="13" y1="14" x2="15" y2="14" /><rect x="10" y="18" width="4" height="4" />
-    </svg>
-  ),
-  portales: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
-    </svg>
-  ),
-};
+const TABS = [
+  { id: 'overview', label: 'Resumen' },
+  { id: 'comunes', label: 'Zonas comunes', swatch: 'var(--c-comunes)' },
+  { id: 'portales', label: 'Portales', swatch: 'var(--c-portales)' },
+];
+
+// La pestaña activa va en el hash (#portales) para poder enlazarla
+function readHash() {
+  const id = window.location.hash.slice(1);
+  return TABS.some((t) => t.id === id) ? id : 'overview';
+}
+
+function ThemeToggle() {
+  const { resolved, toggle } = useTheme();
+  const dark = resolved === 'dark';
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      onClick={toggle}
+      aria-label={dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+      title={dark ? 'Modo claro' : 'Modo oscuro'}
+    >
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {dark ? (
+          <>
+            <circle cx="12" cy="12" r="4.5" />
+            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+          </>
+        ) : (
+          <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
+        )}
+      </svg>
+    </button>
+  );
+}
 
 function App() {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(readHash);
 
-  const tabs = [
-    { id: 'overview', label: 'General' },
-    { id: 'comunes', label: 'Zonas Comunes' },
-    { id: 'portales', label: 'Portales' },
-  ];
+  useEffect(() => {
+    const onNavigation = () => setActiveTab(readHash());
+    window.addEventListener('popstate', onNavigation);
+    return () => window.removeEventListener('popstate', onNavigation);
+  }, []);
+
+  const navigate = (id) => {
+    const url = id === 'overview' ? window.location.pathname : `#${id}`;
+    window.history.pushState(null, '', url);
+    setActiveTab(id);
+    window.scrollTo({ top: 0 });
+  };
 
   return (
-    <div className="dashboard">
-      <header className="dashboard-header">
-        <div className="header-title">
-          <img src="/logo.png" alt="Logo" className="header-logo" />
-          <h1>Dashboard Comunidad</h1>
+    <div className="shell">
+      <header className="masthead">
+        <div className="brand">
+          <img src="/logo.png" alt="" width="34" height="34" />
+          <div>
+            <h1>Terrazas del Cañaveral</h1>
+            <span className="brand-eyebrow">Comunidad · Electricidad</span>
+          </div>
         </div>
-        <nav className="header-tabs">
-          {tabs.map((tab) => (
+
+        <nav className="tabs" aria-label="Secciones">
+          {TABS.map((tab) => (
             <button
               key={tab.id}
-              className={`header-tab ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
+              type="button"
+              className="tab"
+              aria-current={activeTab === tab.id ? 'page' : undefined}
+              onClick={() => navigate(tab.id)}
             >
-              {tabIcons[tab.id]}
+              {tab.swatch && (
+                <span
+                  className="tab-swatch"
+                  style={{ background: tab.swatch }}
+                  aria-hidden="true"
+                />
+              )}
               {tab.label}
             </button>
           ))}
         </nav>
+
+        <div className="masthead-meta">
+          <SyncStatus />
+          <ThemeToggle />
+        </div>
       </header>
-      {activeTab === 'overview'
-        ? <OverviewTab />
-        : <Dashboard activeContract={activeTab} />
-      }
+
+      <main>
+        {activeTab === 'overview' ? (
+          <OverviewTab onNavigate={navigate} />
+        ) : (
+          <ContractView key={activeTab} contractKey={activeTab} />
+        )}
+      </main>
     </div>
   );
 }
