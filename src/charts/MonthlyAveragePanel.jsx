@@ -22,7 +22,6 @@ function MonthlyAveragePanel({ title, monthly, color, withTable = false, ...pane
       labels: monthly.map((m) => fmtMonthShort(m.month)),
       values: monthly.map((m) => m.avgKwh),
       colors: monthly.map((m) => (m.complete ? color : partialColor)),
-      hasPartial: monthly.some((m) => !m.complete),
     }),
     [monthly, color, partialColor],
   );
@@ -36,15 +35,8 @@ function MonthlyAveragePanel({ title, monthly, color, withTable = false, ...pane
     [monthly],
   );
 
-  const legend = chart.hasPartial
-    ? [
-        { label: 'Mes completo', color },
-        { label: 'Mes incompleto', color: partialColor },
-      ]
-    : null;
-
   return (
-    <Panel title={title} legend={legend} {...panelProps}>
+    <Panel title={title} {...panelProps}>
       <BarChart
         labels={chart.labels}
         values={chart.values}

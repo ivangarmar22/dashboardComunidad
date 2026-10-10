@@ -4,7 +4,7 @@
 
 # Terrazas del Cañaveral · Luz y agua
 
-Panel de los suministros de una comunidad de vecinos: facturas de luz de las zonas comunes, consumo hora a hora de los portales y facturas del agua.
+Panel de los suministros de una comunidad de vecinos: facturas de luz de las zonas comunes, consumo hora a hora de los portales y facturas del agua de riego y piscina.
 
 ![Node](https://img.shields.io/badge/Node-22.12%2B-3c873a?logo=nodedotjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)
@@ -18,7 +18,8 @@ Panel de los suministros de una comunidad de vecinos: facturas de luz de las zon
 ## Qué muestra
 
 - **Resumen** de los tres suministros: última factura, evolución del último año y facturas recientes.
-- **Facturas de luz y agua** con precio medio por unidad, comparación con la anterior y aviso de las que se salen de lo habitual.
+- **Luz de zonas comunes**: consumo y precio por kWh de cada factura, con aviso de las que se salen de lo habitual.
+- **Agua**: consumo e importe de cada factura, consumo por día y uso (riego, piscina).
 - **Consumo diario y por horas** de los portales, mapa de calor día × hora, consumo de fondo y reparto por periodos de la tarifa 2.0TD.
 - Filtro para elegir cuántas facturas o meses ver en los gráficos.
 - Modo claro por defecto y modo oscuro opcional, adaptado a móvil, tablet y escritorio.
@@ -37,7 +38,7 @@ La web es estática y lee los archivos de [`data/`](data). Para actualizarla bas
 | Archivo                  | Contenido                                      |
 | ------------------------ | ---------------------------------------------- |
 | `data/luz-comunes.json`  | Facturas de luz de las zonas comunes           |
-| `data/agua.json`         | Facturas de agua                               |
+| `data/agua.json`         | Facturas de agua (EMASA)                       |
 | `data/luz-portales.json` | Lecturas diarias y horarias de luz de portales |
 
 Cada factura (luz o agua) tiene este formato:
@@ -51,8 +52,10 @@ Cada factura (luz o agua) tiene este formato:
 }
 ```
 
-- `consumo` va en kWh para la luz y en m³ para el agua.
-- Opcionalmente, `desde` y `hasta` (`YYYY-MM-DD`) indican el período facturado. Si no están, se toma desde la factura anterior.
+- `consumo` va en kWh para la luz y en m³ para el agua. Si aún no se conoce, `null`: la factura sale como pendiente y no cuenta para el precio medio.
+- Opcionales:
+  - `desde` y `hasta` (`YYYY-MM-DD`): período facturado. Si no están, se toma desde la factura anterior.
+  - `uso`: a qué corresponde la factura, por ejemplo `"Riego y piscina"`.
 - El orden dentro del archivo no importa.
 
 ## Puesta en marcha

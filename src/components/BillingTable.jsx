@@ -1,5 +1,6 @@
 import { Fragment, useLayoutEffect, useRef } from 'react';
 import { fmtEur, fmtPrice, fmtDate, fmtPct } from '../utils/format.js';
+import { averagePrice } from '../utils/analytics.js';
 import { Empty, WarnIcon } from './ui.jsx';
 
 const sum = (rows, field) => rows.reduce((total, row) => total + (row[field] || 0), 0);
@@ -98,12 +99,21 @@ function BillingTable({ invoices, unit, formatQty, limit, maxRows }) {
               <tr key={inv.numFact}>
                 <td>
                   {fmtDate(inv.fEmision)}
+                  {inv.uso && <span className="cell-sub">{inv.uso}</span>}
                   <span className="cell-sub mono show-sm">{inv.numFact}</span>
                 </td>
                 <td className="mono muted hide-sm">{inv.numFact}</td>
                 <td className="is-num">
-                  {formatQty(inv.consumo)}
-                  <span className="hide-sm"> {unit}</span>
+                  {inv.consumo == null ? (
+                    <span className="muted" title="Consumo pendiente de la factura completa">
+                      Pendiente
+                    </span>
+                  ) : (
+                    <>
+                      {formatQty(inv.consumo)}
+                      <span className="hide-sm"> {unit}</span>
+                    </>
+                  )}
                 </td>
                 <td className="is-num">
                   <strong>
@@ -149,9 +159,7 @@ function BillingTable({ invoices, unit, formatQty, limit, maxRows }) {
                 <span className="hide-sm"> €</span>
               </td>
               <td className="hide-sm" />
-              <td className="is-num">
-                {totalConsumo > 0 ? fmtPrice(totalImporte / totalConsumo) : '--'}
-              </td>
+              <td className="is-num">{fmtPrice(averagePrice(rows))}</td>
             </tr>
           </tfoot>
         </table>

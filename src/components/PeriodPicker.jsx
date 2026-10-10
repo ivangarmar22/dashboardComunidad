@@ -88,22 +88,35 @@ function PeriodPicker({ periods, selected, onSelect, unit, formatQty }) {
         </div>
       </div>
 
-      <label className="periods-select">
-        <span className="visually-hidden">Período de facturación</span>
-        <select value={selected} onChange={(event) => select(Number(event.target.value))}>
-          {years.map((y) => (
-            <optgroup key={y} label={y}>
-              {periods.map((p, idx) =>
-                yearOf(p) === y ? (
-                  <option key={`${p.from}-${p.to}`} value={idx}>
-                    {optionLabel(p)}
-                  </option>
-                ) : null,
-              )}
-            </optgroup>
-          ))}
-        </select>
-      </label>
+      <div className="periods-select">
+        {years.length > 1 && (
+          <label className="periods-select-field is-year">
+            <span className="visually-hidden">Año</span>
+            <select
+              value={year}
+              onChange={(event) =>
+                select(periods.findIndex((p) => yearOf(p) === event.target.value))
+              }
+            >
+              {years.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="periods-select-field">
+          <span className="visually-hidden">Período de facturación</span>
+          <select value={selected} onChange={(event) => select(Number(event.target.value))}>
+            {visible.map(({ p, idx }) => (
+              <option key={`${p.from}-${p.to}`} value={idx}>
+                {optionLabel(p)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       <div className="periods" role="group" aria-label={`Períodos de ${year}`}>
         {visible.map(({ p, idx }) => (
@@ -116,7 +129,7 @@ function PeriodPicker({ periods, selected, onSelect, unit, formatQty }) {
           >
             <span className="period-range">{fmtRangeShort(p.from, p.to)}</span>
             <span className="period-meta">
-              {p.consumption != null ? `${formatQty(p.consumption)} ${unit}` : '—'}
+              {p.consumption != null ? `${formatQty(p.consumption)} ${unit}` : 'Pendiente'}
               {p.importe != null && ` · ${fmtEur(p.importe)} €`}
             </span>
             {p.isCurrent && (

@@ -73,6 +73,9 @@ function ProfileChart({ title, profile, color }) {
       legend={series.map((s) => ({ label: s.legend, color: s.color, line: true }))}
     >
       <div className="chart-box is-short" role="img" aria-label="Perfil horario medio de consumo">
+        <span className="chart-unit" aria-hidden="true">
+          kWh
+        </span>
         <Line data={data} options={options} />
       </div>
     </Panel>

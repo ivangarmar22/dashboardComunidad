@@ -1,1 +1,8 @@
-[]
+[
+  {"numFact":"2025EMFF2224847","fEmision":"2025-11-06","desde":"2025-09-05","hasta":"2025-11-03","consumo":1238,"importe":4102.73,"uso":"Riego"},
+  {"numFact":"2026EMFF1020375","fEmision":"2026-01-12","desde":"2025-11-04","hasta":"2026-01-09","consumo":632,"importe":2115.69,"uso":"Riego y piscina"},
+  {"numFact":"2026EMFF1265480","fEmision":"2026-03-09","desde":"2026-01-10","hasta":"2026-03-06","consumo":52,"importe":203.57,"uso":"Riego y piscina"},
+  {"numFact":"2026EMFF1504604","fEmision":"2026-05-12","desde":"2026-03-07","hasta":"2026-05-11","consumo":303,"importe":1034.11,"uso":"Riego y piscina"},
+  {"numFact":"2026EMFF1749307","fEmision":"2026-07-10","desde":"2026-05-12","hasta":"2026-07-08","consumo":1213,"importe":4078.22,"uso":"Riego y piscina"},
+  {"numFact":"2026EMFF1988145","fEmision":"2026-09-15","consumo":null,"importe":7262.96}
+]

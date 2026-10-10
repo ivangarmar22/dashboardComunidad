@@ -68,7 +68,12 @@ function InvoiceCard({ supply, onOpen }) {
           label="Consumo facturado"
           value={last && supply.formatQty(last.consumo)}
           unit={supply.unit}
-          foot={last && `${fmtPrice(last.pricePerKwh)} €/${supply.unit}`}
+          foot={
+            last &&
+            (last.consumo == null
+              ? 'Pendiente de la factura completa'
+              : `${fmtPrice(last.pricePerKwh)} €/${supply.unit}`)
+          }
         />
       </div>
       {last ? (

@@ -30,17 +30,14 @@ export function isValleDay(date) {
 }
 
 /** Periodo 2.0TD de una hora (1-24) en una fecha */
-export function tariffPeriod(date, endesaHour) {
-  const start = endesaHour - 1;
+export function tariffPeriod(date, hour) {
+  const start = hour - 1;
   if (isValleDay(date) || start < 8) return 'P3';
   if ((start >= 10 && start < 14) || (start >= 18 && start < 22)) return 'P1';
   return 'P2';
 }
 
-/**
- * Resumen de un conjunto de días. `baseLoadKw` es el consumo de fondo: la media
- * del mínimo horario de cada día (luces de emergencia, porteros, routers...).
- */
+// `baseLoadKw` es el consumo de fondo: la media del mínimo horario de cada día
 export function summarize(days) {
   if (!days?.length) return null;
 
@@ -145,10 +142,7 @@ function median(values) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-/**
- * Añade el precio medio (€/kWh) y marca las facturas que se alejan más de un
- * 35 % de la mediana (regularizaciones, cargos extra, errores de lectura).
- */
+// Precio por unidad y aviso si se aleja más de un 35 % de la mediana
 export function enrichInvoices(invoices) {
   const priced = invoices.map((inv) => ({
     ...inv,
@@ -166,6 +160,13 @@ export function enrichInvoices(invoices) {
   });
 }
 
+// Precio medio solo con las facturas que tienen consumo: las pendientes lo inflarían
+export function averagePrice(invoices) {
+  const priced = invoices.filter((i) => i.consumo > 0);
+  const consumo = sum(priced, (i) => i.consumo);
+  return consumo > 0 ? sum(priced, (i) => i.importe) / consumo : null;
+}
+
 /** Totales de facturas ya enriquecidas con `enrichInvoices` */
 export function invoiceStats(invoices) {
   if (!invoices.length) return null;
@@ -175,18 +176,14 @@ export function invoiceStats(invoices) {
     count: invoices.length,
     totalImporte,
     totalConsumo,
-    avgPrice: totalConsumo > 0 ? totalImporte / totalConsumo : null,
+    avgPrice: averagePrice(invoices),
     outliers: invoices.filter((i) => i.isOutlier),
   };
 }
 
 export const takeLast = (list, count) => (Number.isFinite(count) ? list.slice(-count) : list);
 
-/**
- * Elementos de los últimos 12 meses (lista en orden cronológico). Se cuenta
- * desde el más reciente y no desde hoy, porque los datos pueden ir con retraso.
- * Acepta meses (YYYY-MM) o fechas (YYYY-MM-DD).
- */
+// Último año contado desde el dato más reciente, no desde hoy (YYYY-MM o YYYY-MM-DD)
 export function lastTwelveMonths(list, getDate) {
   if (list.length === 0) return list;
   const latest = getDate(list.at(-1));
@@ -200,13 +197,18 @@ export function lastTwelveMonths(list, getDate) {
 
 const isoDate = (date) => date.toLocaleDateString('sv-SE');
 
-/**
- * Un período por factura (de la más reciente a la más antigua). Si la factura
- * no trae `desde`/`hasta`, cubre desde la emisión anterior.
- */
-export function periodsFromInvoices(invoices) {
+const addDays = (iso, days) => {
+  const d = parseISODate(iso);
+  d.setDate(d.getDate() + days);
+  return isoDate(d);
+};
+
+// Sin `desde`, el período empieza donde acabó la factura anterior (al día siguiente en el agua)
+export function periodsFromInvoices(invoices, { inclusiveDays = false } = {}) {
   return invoices.map((inv, idx) => {
-    let from = inv.desde ?? invoices[idx + 1]?.fEmision;
+    const older = invoices[idx + 1];
+    let from =
+      inv.desde ?? (older?.hasta ? addDays(older.hasta, inclusiveDays ? 1 : 0) : older?.fEmision);
     if (!from) {
       const d = parseISODate(inv.fEmision);
       d.setDate(d.getDate() - 30);
@@ -218,6 +220,9 @@ export function periodsFromInvoices(invoices) {
       consumption: inv.consumo,
       importe: inv.importe,
       numFact: inv.numFact,
+      emitted: inv.fEmision,
+      uso: inv.uso,
+      days: daysBetween(from, inv.hasta ?? inv.fEmision) + (inclusiveDays ? 1 : 0),
       isCurrent: idx === 0,
       isBilling: true,
     };

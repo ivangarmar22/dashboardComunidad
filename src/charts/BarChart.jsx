@@ -34,7 +34,6 @@ function BarChart({
 
   const options = useMemo(() => {
     const options = baseOptions(t, {
-      yTitle,
       yFormat,
       tooltip: {
         callbacks: {
@@ -74,6 +73,11 @@ function BarChart({
 
   return (
     <div className={`chart-box${short ? ' is-short' : ''}`} role="img" aria-label={ariaLabel}>
+      {yTitle && (
+        <span className="chart-unit" aria-hidden="true">
+          {yTitle}
+        </span>
+      )}
       <Bar data={data} options={options} plugins={PLUGINS} />
     </div>
   );

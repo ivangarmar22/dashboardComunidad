@@ -19,11 +19,20 @@ function InvoiceLede({ supply, period, previous }) {
   const diff = previous ? change(period.importe, previous.importe) : null;
   return (
     <p className="lede">
-      La factura emitida el <strong>{fmtDate(period.to)}</strong> fue de{' '}
-      <strong>{fmtEur(period.importe)}&nbsp;€</strong> por{' '}
-      <strong>
-        {supply.formatQty(period.consumption)}&nbsp;{supply.unit}
-      </strong>
+      La factura{period.uso && ` de ${period.uso.toLowerCase()}`} emitida el{' '}
+      <strong>{fmtDate(period.emitted)}</strong> fue de{' '}
+      <strong>{fmtEur(period.importe)}&nbsp;€</strong>
+      {period.consumption == null ? (
+        ' (consumo pendiente de la factura completa)'
+      ) : (
+        <>
+          {' '}
+          por{' '}
+          <strong>
+            {supply.formatQty(period.consumption)}&nbsp;{supply.unit}
+          </strong>
+        </>
+      )}
       {price && (
         <>
           {' '}
@@ -70,7 +79,7 @@ function SupplyView({ supply }) {
   const periods = useMemo(
     () =>
       supply.kind === 'invoices'
-        ? periodsFromInvoices(supply.invoices)
+        ? periodsFromInvoices(supply.invoices, { inclusiveDays: supply.inclusiveDays })
         : periodsFromDays(supply.days),
     [supply],
   );

@@ -415,7 +415,6 @@ strong {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  transition: opacity 0.2s;
 }
 
 .panel-head {
@@ -446,6 +445,16 @@ strong {
 .chart-box {
   position: relative;
   height: 300px;
+}
+
+.chart-unit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink-3);
+  pointer-events: none;
 }
 
 .chart-box.is-short {
@@ -756,10 +765,20 @@ strong {
 
 .periods-select {
   display: none;
-  position: relative;
+  gap: 8px;
 }
 
-.periods-select::after {
+.periods-select-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.periods-select-field.is-year {
+  flex: 0 0 auto;
+}
+
+.periods-select-field::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -775,18 +794,23 @@ strong {
 .periods-select select {
   width: 100%;
   min-height: 46px;
-  padding: 10px 38px 10px 14px;
-  border: 1px solid var(--ink);
+  padding: 10px 36px 10px 14px;
+  border: 1px solid var(--border);
   border-radius: 8px;
   font: inherit;
   font-size: 15px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
   color: var(--ink);
   background: var(--surface);
-  box-shadow: inset 3px 0 0 var(--entity, var(--ink));
   appearance: none;
   cursor: pointer;
+}
+
+.periods-select-field:not(.is-year) select {
+  border-color: var(--ink);
+  box-shadow: inset 3px 0 0 var(--entity, var(--ink));
 }
 
 .periods-hint {
@@ -1285,6 +1309,30 @@ strong {
   .stat:nth-child(n + 3) {
     border-top: 1px solid var(--border);
   }
+
+  .table-billing .col-date {
+    width: 17%;
+  }
+
+  .table-billing .col-ref {
+    width: 24%;
+  }
+
+  .table-billing .col-kwh {
+    width: 17%;
+  }
+
+  .table-billing .col-amount {
+    width: 19%;
+  }
+
+  .table-billing .col-bar {
+    width: 9%;
+  }
+
+  .table td.total-label {
+    white-space: normal;
+  }
 }
 
 /* Móvil */
@@ -1376,7 +1424,7 @@ strong {
   }
 
   .periods-select {
-    display: block;
+    display: flex;
   }
 
   .periods-bar {
@@ -1430,10 +1478,6 @@ strong {
 
   .table .cell-sub {
     font-size: 10.5px;
-  }
-
-  .table td.total-label {
-    white-space: normal;
   }
 
   .table tfoot td {

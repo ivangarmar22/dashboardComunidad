@@ -49,11 +49,9 @@ export function Section({ num, title, note, aside, children }) {
   );
 }
 
-// Cabecera y cuerpo separados: en .grid-halves la cabecera de los paneles vecinos
-// comparte altura y los gráficos empiezan a la misma altura aunque uno tenga leyenda
-export function Panel({ title, legend, children, refreshing = false, className = '' }) {
+export function Panel({ title, legend, children, className = '' }) {
   return (
-    <div className={`panel ${refreshing ? 'is-refreshing' : ''} ${className}`}>
+    <div className={`panel ${className}`}>
       {(title || legend) && (
         <div className="panel-head">
           {title && <h4 className="panel-title">{title}</h4>}

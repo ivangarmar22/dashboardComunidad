@@ -27,7 +27,7 @@ export const fmtNum1 = format(fmt1);
 export const fmtNum0 = format(fmt0);
 /** 1168 -> "1.168,00" */
 export const fmtEur = format(fmtMoney);
-/** 0.25 -> "0,250" (€/kWh) */
+/** 0.25 -> "0,250" */
 export const fmtPrice = format(fmtPriceFixed);
 
 /** 0.123 -> "12 %", con signo opcional: "+12 %" / "−12 %" */

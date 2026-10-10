@@ -15,7 +15,9 @@
     "fEmision": "2026-09-10",
     "cups": "ES0031105688431001TB0F",
     "digital": null,
-    "codigoDescarga": "P26CON038485591"
+    "codigoDescarga": "P26CON038485591",
+    "desde": "2026-07-31",
+    "hasta": "2026-08-31"
   },
   {
     "numFact": "P26CON033548841",
@@ -24,7 +26,9 @@
     "fEmision": "2026-08-08",
     "cups": "ES0031105688431001TB0F",
     "digital": null,
-    "codigoDescarga": "P26CON033548841"
+    "codigoDescarga": "P26CON033548841",
+    "desde": "2026-06-30",
+    "hasta": "2026-07-31"
   },
   {
     "numFact": "P26CON028859215",
@@ -33,7 +37,9 @@
     "fEmision": "2026-07-08",
     "cups": "ES0031105688431001TB0F",
     "digital": null,
-    "codigoDescarga": "P26CON028859215"
+    "codigoDescarga": "P26CON028859215",
+    "desde": "2026-05-31",
+    "hasta": "2026-06-30"
   },
   {
     "numFact": "P26CON025134478",
@@ -42,7 +48,9 @@
     "fEmision": "2026-06-10",
     "cups": "ES0031105688431001TB0F",
     "digital": null,
-    "codigoDescarga": "P26CON025134478"
+    "codigoDescarga": "P26CON025134478",
+    "desde": "2026-04-21",
+    "hasta": "2026-05-31"
   },
   {
     "numFact": "P26CON018082427",

@@ -4,18 +4,18 @@ import BarChart from '../charts/BarChart.jsx';
 import BillingTable from './BillingTable.jsx';
 import { Stat, Delta, Section, Panel, RangeFilter, WarnIcon } from './ui.jsx';
 import { change, daysBetween, takeLast } from '../utils/analytics.js';
-import { fmtNum3, fmtEur, fmtPrice, fmtDate, fmtDayMonth } from '../utils/format.js';
+import { fmtNum0, fmtNum3, fmtEur, fmtPrice, fmtDate, fmtDayMonth } from '../utils/format.js';
 
 const unitPrice = (p) => (p?.consumption > 0 ? p.importe / p.consumption : null);
 
 function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
   const { tokens: t } = useTheme();
-  const { invoices, unit, formatQty } = supply;
+  const { invoices, unit, formatQty, amountChart } = supply;
   const color = t[supply.key];
   const priceUnit = `€/${unit}`;
   const previous = periods[periods.indexOf(period) + 1];
   const invoice = invoices.find((i) => i.numFact === period.numFact);
-  const billedDays = daysBetween(period.from, period.to);
+  const pending = period.consumption == null;
   const price = unitPrice(period);
   const [range, setRange] = useState(12);
 
@@ -31,19 +31,37 @@ function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
       chrono,
       labels: chrono.map(label),
       quantities: chrono.map((i) => i.consumo),
+      amounts: chrono.map((i) => i.importe),
       prices: chrono.map((i) => i.pricePerKwh),
-      quantityColors: chrono.map(barColor),
+      colors: chrono.map(barColor),
       priceColors: chrono.map((i) => (i.isOutlier ? t.warn : barColor(i))),
       hasOutliers: chrono.some((i) => i.isOutlier),
     };
   }, [invoices, range, period.numFact, color, t.ink, t.warn]);
 
   const invoiceTitle = useCallback(
-    (i) => `Factura del ${fmtDate(chart.chrono[i].fEmision)}`,
+    (i) => {
+      const inv = chart.chrono[i];
+      return `Factura del ${fmtDate(inv.fEmision)}${inv.uso ? ` · ${inv.uso}` : ''}`;
+    },
     [chart],
   );
   const quantityLabel = useCallback(
-    (i) => `${formatQty(chart.chrono[i].consumo)} ${unit} · ${fmtEur(chart.chrono[i].importe)} €`,
+    (i) => {
+      const inv = chart.chrono[i];
+      const quantity =
+        inv.consumo == null ? 'Consumo pendiente' : `${formatQty(inv.consumo)} ${unit}`;
+      return `${quantity} · ${fmtEur(inv.importe)} €`;
+    },
+    [chart, formatQty, unit],
+  );
+  const amountLabel = useCallback(
+    (i) => {
+      const inv = chart.chrono[i];
+      const quantity =
+        inv.consumo == null ? 'consumo pendiente' : `${formatQty(inv.consumo)} ${unit}`;
+      return `${fmtEur(inv.importe)} € · ${quantity}`;
+    },
     [chart, formatQty, unit],
   );
   const priceLabel = useCallback(
@@ -82,7 +100,11 @@ function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
           label="Consumo facturado"
           value={formatQty(period.consumption)}
           unit={unit}
-          foot={versusPrevious(period.consumption, previous?.consumption)}
+          foot={
+            pending
+              ? 'Pendiente de la factura completa'
+              : versusPrevious(period.consumption, previous?.consumption)
+          }
         />
         <Stat
           label="Importe"
@@ -93,16 +115,16 @@ function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
         <Stat label="Precio medio" value={fmtPrice(price)} unit={priceUnit} foot={priceFoot} />
         <Stat
           label="Consumo por día"
-          value={billedDays > 0 ? formatQty(period.consumption / billedDays) : null}
+          value={pending ? null : formatQty(period.consumption / period.days)}
           unit={unit}
-          foot={`~${billedDays} días facturados`}
+          foot={pending ? 'Pendiente de la factura completa' : `${period.days} días facturados`}
         />
       </div>
 
       <Section
         num="01"
         title="Facturas"
-        note={`Consumo y precio por ${unit} de cada factura, por fecha de emisión. Pulsa una barra para ver esa factura.`}
+        note={`${amountChart ? 'Consumo e importe' : `Consumo y precio por ${unit}`} de cada factura, por fecha de emisión. Pulsa una barra para ver esa factura.`}
         aside={<RangeFilter total={invoices.length} value={range} onChange={setRange} />}
       >
         <div className="grid-halves">
@@ -110,7 +132,7 @@ function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
             <BarChart
               labels={chart.labels}
               values={chart.quantities}
-              colors={chart.quantityColors}
+              colors={chart.colors}
               yTitle={unit}
               onSelect={selectInvoice}
               tooltipTitle={invoiceTitle}
@@ -119,26 +141,43 @@ function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
               ariaLabel="Consumo por factura"
             />
           </Panel>
-          <Panel
-            title={`Precio medio por ${unit}`}
-            legend={[
-              ...legend,
-              ...(chart.hasOutliers ? [{ label: 'Precio anómalo', color: t.warn }] : []),
-            ]}
-          >
-            <BarChart
-              labels={chart.labels}
-              values={chart.prices}
-              colors={chart.priceColors}
-              yTitle={priceUnit}
-              yFormat={fmtNum3}
-              onSelect={selectInvoice}
-              tooltipTitle={invoiceTitle}
-              tooltipLabel={priceLabel}
-              short
-              ariaLabel={`Precio medio por ${unit} de cada factura`}
-            />
-          </Panel>
+          {amountChart ? (
+            <Panel title="Importe facturado" legend={legend}>
+              <BarChart
+                labels={chart.labels}
+                values={chart.amounts}
+                colors={chart.colors}
+                yTitle="€"
+                yFormat={fmtNum0}
+                onSelect={selectInvoice}
+                tooltipTitle={invoiceTitle}
+                tooltipLabel={amountLabel}
+                short
+                ariaLabel="Importe por factura"
+              />
+            </Panel>
+          ) : (
+            <Panel
+              title={`Precio medio por ${unit}`}
+              legend={[
+                ...legend,
+                ...(chart.hasOutliers ? [{ label: 'Precio anómalo', color: t.warn }] : []),
+              ]}
+            >
+              <BarChart
+                labels={chart.labels}
+                values={chart.prices}
+                colors={chart.priceColors}
+                yTitle={priceUnit}
+                yFormat={fmtNum3}
+                onSelect={selectInvoice}
+                tooltipTitle={invoiceTitle}
+                tooltipLabel={priceLabel}
+                short
+                ariaLabel={`Precio medio por ${unit} de cada factura`}
+              />
+            </Panel>
+          )}
         </div>
       </Section>
 

@@ -41,13 +41,14 @@ export function barStyle(color) {
   };
 }
 
-export function baseOptions(t, { yTitle = 'kWh', yFormat = fmtNum, tooltip = {} } = {}) {
+export function baseOptions(t, { yFormat = fmtNum, tooltip = {} } = {}) {
   const font = { family: t.fontSans, size: 12 };
   return {
     responsive: true,
     maintainAspectRatio: false,
     animation: { duration: 250 },
-    layout: { padding: { top: 8 } },
+    // Hueco arriba para la unidad del eje, que va en horizontal (.chart-unit)
+    layout: { padding: { top: 22 } },
     interaction: { mode: 'index', intersect: false },
     plugins: {
       tooltip: {
@@ -75,10 +76,16 @@ export function baseOptions(t, { yTitle = 'kWh', yFormat = fmtNum, tooltip = {} 
       },
       y: {
         beginAtZero: true,
-        grid: { color: t.grid },
+        grid: { color: t.grid, drawTicks: false },
         border: { display: false },
-        ticks: { color: t.muted, font, padding: 8, maxTicksLimit: 6, callback: (v) => yFormat(v) },
-        title: { display: Boolean(yTitle), text: yTitle, color: t.muted, font },
+        ticks: {
+          color: t.muted,
+          font,
+          padding: 6,
+          crossAlign: 'far',
+          maxTicksLimit: 6,
+          callback: (v) => yFormat(v),
+        },
       },
     },
   };
