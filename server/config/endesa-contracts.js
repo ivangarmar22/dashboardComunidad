@@ -1,6 +1,12 @@
+// Quita espacios y comillas que se cuelan al copiar valores desde otros paneles (CLAVE="valor")
+function readEnv(name) {
+  const value = process.env[name]?.trim();
+  if (!value) return undefined;
+  return value.replace(/^(["'])(.*)\1$/s, '$2');
+}
+
 function contractFromEnv(key, label) {
-  const prefix = `ENDESA_${key.toUpperCase()}_`;
-  const env = (name) => process.env[prefix + name];
+  const env = (name) => readEnv(`ENDESA_${key.toUpperCase()}_${name}`);
   return {
     key,
     label,
@@ -26,12 +32,12 @@ export function getContract(key) {
 }
 
 export const BILLING_CONFIG = {
-  user: process.env.ENDESA_BILLING_USER,
-  password: process.env.ENDESA_BILLING_PASSWORD,
-  sfContractId: process.env.ENDESA_BILLING_SF_CONTRACT_ID,
-  cookie: process.env.ENDESA_BILLING_COOKIE,
-  auraToken: process.env.ENDESA_BILLING_AURA_TOKEN,
-  auraFwuid: process.env.ENDESA_BILLING_AURA_FWUID,
+  user: readEnv('ENDESA_BILLING_USER'),
+  password: readEnv('ENDESA_BILLING_PASSWORD'),
+  sfContractId: readEnv('ENDESA_BILLING_SF_CONTRACT_ID'),
+  cookie: readEnv('ENDESA_BILLING_COOKIE'),
+  auraToken: readEnv('ENDESA_BILLING_AURA_TOKEN'),
+  auraFwuid: readEnv('ENDESA_BILLING_AURA_FWUID'),
   dataFile: 'endesa-billing.json',
 };
 
