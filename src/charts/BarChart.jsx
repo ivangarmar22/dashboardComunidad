@@ -6,20 +6,30 @@ import { fmtNum } from '../utils/format.js';
 
 const PLUGINS = [referenceLine, backgroundBands];
 
+// En barras apiladas solo se redondea el último tramo con valor de cada barra
+const topRadius = (stacks, index) => (ctx) =>
+  stacks.slice(index + 1).some((s) => s.values[ctx.dataIndex] > 0)
+    ? 0
+    : { topLeft: 4, topRight: 4 };
+
 /**
- * Barras de una sola serie. `colors` puede ser un color o uno por barra;
- * `reference` dibuja una línea horizontal y `bands` sombrea categorías del eje X.
+ * Una serie (`values` y `colors`, uno o uno por barra) o varias apiladas (`stacks`).
+ * `reference` dibuja una línea horizontal, `bands` sombrea categorías del eje X
+ * y `highlight` marca una barra.
  */
 function BarChart({
   labels,
   values,
   colors,
+  stacks,
   yTitle = 'kWh',
   yFormat = fmtNum,
   tooltipTitle,
   tooltipLabel,
+  tooltipFooter,
   reference,
   bands,
+  highlight,
   onSelect,
   xTickFormat,
   ariaLabel,
@@ -28,8 +38,18 @@ function BarChart({
   const { tokens: t } = useTheme();
 
   const data = useMemo(
-    () => ({ labels, datasets: [{ data: values, ...barStyle(colors) }] }),
-    [labels, values, colors],
+    () => ({
+      labels,
+      datasets: stacks
+        ? stacks.map((s, i) => ({
+            label: s.label,
+            data: s.values,
+            ...barStyle(s.color),
+            borderRadius: topRadius(stacks, i),
+          }))
+        : [{ data: values, ...barStyle(colors) }],
+    }),
+    [labels, values, colors, stacks],
   );
 
   const options = useMemo(() => {
@@ -39,10 +59,27 @@ function BarChart({
         callbacks: {
           title: (items) => (tooltipTitle ? tooltipTitle(items[0].dataIndex) : items[0]?.label),
           label: (ctx) =>
-            tooltipLabel ? tooltipLabel(ctx.dataIndex) : `${yFormat(ctx.parsed.y)} ${yTitle}`,
+            tooltipLabel
+              ? tooltipLabel(ctx.dataIndex, ctx.datasetIndex)
+              : `${yFormat(ctx.parsed.y)} ${yTitle}`,
+          footer: (items) => tooltipFooter?.(items[0].dataIndex),
         },
       },
     });
+
+    if (stacks) {
+      options.scales.x.stacked = true;
+      options.scales.y.stacked = true;
+      Object.assign(options.plugins.tooltip, {
+        displayColors: true,
+        boxWidth: 8,
+        boxHeight: 8,
+        bodyFont: { ...options.plugins.tooltip.bodyFont, weight: 400 },
+        footerColor: t.ink,
+        footerFont: { ...options.plugins.tooltip.bodyFont, weight: 600 },
+        footerMarginTop: 6,
+      });
+    }
 
     if (xTickFormat) {
       options.scales.x.ticks.callback = function (value, index) {
@@ -55,7 +92,10 @@ function BarChart({
       background: alpha(t.surface, 0.85),
       font: t.fontSans,
     };
-    options.plugins.bands = bands && { indices: bands, color: alpha(t.ink, 0.045) };
+    options.plugins.bands =
+      highlight != null
+        ? { indices: new Set([highlight]), color: alpha(t.ink, 0.08) }
+        : bands && { indices: bands, color: alpha(t.ink, 0.045) };
 
     if (onSelect) {
       options.onClick = (event, elements, chart) => {
@@ -69,7 +109,20 @@ function BarChart({
       };
     }
     return options;
-  }, [t, yTitle, yFormat, tooltipTitle, tooltipLabel, reference, bands, onSelect, xTickFormat]);
+  }, [
+    t,
+    stacks,
+    yTitle,
+    yFormat,
+    tooltipTitle,
+    tooltipLabel,
+    tooltipFooter,
+    reference,
+    bands,
+    highlight,
+    onSelect,
+    xTickFormat,
+  ]);
 
   return (
     <div className={`chart-box${short ? ' is-short' : ''}`} role="img" aria-label={ariaLabel}>

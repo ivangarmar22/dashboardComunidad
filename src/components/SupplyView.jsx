@@ -19,8 +19,8 @@ function InvoiceLede({ supply, period, previous }) {
   const diff = previous ? change(period.importe, previous.importe) : null;
   return (
     <p className="lede">
-      La factura{period.uso && ` de ${period.uso.toLowerCase()}`} emitida el{' '}
-      <strong>{fmtDate(period.emitted)}</strong> fue de{' '}
+      {period.parts ? `Las ${period.parts.length} facturas emitidas` : 'La factura emitida'} el{' '}
+      <strong>{fmtDate(period.emitted)}</strong> {period.parts ? 'suman' : 'fue de'}{' '}
       <strong>{fmtEur(period.importe)}&nbsp;€</strong>
       {period.consumption == null ? (
         ' (consumo pendiente de la factura completa)'
@@ -39,7 +39,12 @@ function InvoiceLede({ supply, period, previous }) {
           ({fmtPrice(price)}&nbsp;€/{supply.unit})
         </>
       )}
-      {isNoticeable(diff) && <>, {moreOrLess(diff)} que la anterior</>}.
+      {isNoticeable(diff) && (
+        <>
+          , {moreOrLess(diff)} que {period.parts ? 'en el período anterior' : 'la anterior'}
+        </>
+      )}
+      .
     </p>
   );
 }

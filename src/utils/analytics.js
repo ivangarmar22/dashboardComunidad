@@ -143,7 +143,7 @@ function median(values) {
 }
 
 // Precio por unidad y aviso si se aleja más de un 35 % de la mediana
-export function enrichInvoices(invoices) {
+export function enrichInvoices(invoices, { flagOutliers = true } = {}) {
   const priced = invoices.map((inv) => ({
     ...inv,
     pricePerKwh: inv.consumo > 0 ? inv.importe / inv.consumo : null,
@@ -155,7 +155,7 @@ export function enrichInvoices(invoices) {
     return {
       ...inv,
       priceDeviation: deviation,
-      isOutlier: deviation != null && Math.abs(deviation) > 0.35,
+      isOutlier: flagOutliers && deviation != null && Math.abs(deviation) > 0.35,
     };
   });
 }
@@ -173,12 +173,33 @@ export function invoiceStats(invoices) {
   const totalImporte = sum(invoices, (i) => i.importe);
   const totalConsumo = sum(invoices, (i) => i.consumo);
   return {
-    count: invoices.length,
+    count: sum(invoices, (i) => i.parts?.length ?? 1),
     totalImporte,
     totalConsumo,
     avgPrice: averagePrice(invoices),
     outliers: invoices.filter((i) => i.isOutlier),
   };
+}
+
+// Suma en una sola las facturas de varios contadores emitidas en el mismo período
+export function groupInvoices(invoices, getKey) {
+  const groups = new Map();
+  for (const inv of invoices) {
+    const key = getKey(inv);
+    groups.set(key, [...(groups.get(key) ?? []), inv]);
+  }
+  return [...groups].map(([key, parts]) => {
+    const main = parts.reduce((a, b) => (b.importe > a.importe ? b : a));
+    return {
+      numFact: key,
+      fEmision: parts.reduce((latest, p) => (p.fEmision > latest ? p.fEmision : latest), ''),
+      desde: main.desde,
+      hasta: main.hasta,
+      consumo: parts.some((p) => p.consumo == null) ? null : sum(parts, (p) => p.consumo),
+      importe: Math.round(sum(parts, (p) => p.importe) * 100) / 100,
+      parts,
+    };
+  });
 }
 
 export const takeLast = (list, count) => (Number.isFinite(count) ? list.slice(-count) : list);
@@ -221,7 +242,7 @@ export function periodsFromInvoices(invoices, { inclusiveDays = false } = {}) {
       importe: inv.importe,
       numFact: inv.numFact,
       emitted: inv.fEmision,
-      uso: inv.uso,
+      parts: inv.parts,
       days: daysBetween(from, inv.hasta ?? inv.fEmision) + (inclusiveDays ? 1 : 0),
       isCurrent: idx === 0,
       isBilling: true,

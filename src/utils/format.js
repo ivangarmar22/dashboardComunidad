@@ -36,6 +36,7 @@ export function fmtPct(ratio, { signed = false } = {}) {
   const value = fmt0.format(Math.abs(ratio * 100));
   let sign = ratio < 0 ? '−' : '';
   if (signed && ratio > 0) sign = '+';
+  if (value === '0') sign = '';
   return `${sign}${value}${NBSP}%`;
 }
 
