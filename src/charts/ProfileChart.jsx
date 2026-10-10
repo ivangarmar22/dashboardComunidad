@@ -7,7 +7,6 @@ import { Legend } from '../components/ui.jsx';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}h`);
 
-// Perfil horario medio: laborables en el color del contrato, festivos en gris
 function ProfileChart({ profile, color }) {
   const { tokens: t } = useTheme();
 

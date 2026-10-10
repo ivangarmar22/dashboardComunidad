@@ -1,8 +1,4 @@
-/*
- * Papel cálido y tinta. Cada contrato tiene un color, validado para
- * daltonismo y contraste en ambos modos: naranja (zonas comunes) y azul
- * petróleo (portales).
- */
+/* Colores de contrato comprobados para daltonismo y contraste en ambos modos */
 
 :root {
   color-scheme: light;

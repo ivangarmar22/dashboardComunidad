@@ -38,22 +38,21 @@ Panel del consumo eléctrico de una comunidad de vecinos: facturas de las zonas 
 ```mermaid
 flowchart LR
   E[(Endesa<br/>área cliente y Mi Empresa)]
-  S[Sincronización<br/>cada 6 h]
-  D[(server/data<br/>JSON)]
-  A[API Express]
-  W[Web React]
+  S[GitHub Actions<br/>cada 6 h]
+  D[(server/data<br/>JSON en el repo)]
+  P[GitHub Pages<br/>web estática]
 
   E -- login con Playwright<br/>+ API JSON --> S
-  S --> D
-  D --> A
-  A --> W
+  S -- guarda los datos nuevos --> D
+  D -- compila y publica --> P
 ```
 
 - Playwright solo se usa para **iniciar sesión**; los datos se piden directamente a la API JSON de Endesa, que es más rápido y estable que leer la página.
-- La sincronización corre **en segundo plano**, así que la web lee siempre de disco y carga al instante.
-- La sesión se guarda 4 h y se renueva sola si caduca. Si varias peticiones necesitan iniciar sesión a la vez, se abre un solo navegador.
+- La web publicada es **estática**: no hay servidor encendido, así que no cuesta nada y carga al instante.
+- Si Endesa falla en una ejecución, la web se publica igualmente con los últimos datos guardados.
+- En local (o con Docker) un servidor Express sirve la misma web con una API y sincroniza en segundo plano.
 - Los días que Endesa aún no ha leído llegan a 0: no se guardan, y se completan en cuanto llega la lectura real.
-- `GET /api/status` informa de la última sincronización y de los errores, y la cabecera de la web lo muestra.
+- La cabecera de la web indica cuándo fue la última sincronización correcta y si hubo errores.
 
 ## Puesta en marcha
 
@@ -95,6 +94,7 @@ Todas las variables están en [`.env.example`](.env.example).
 | ------------------------ | --------------------------------------------------------- |
 | `npm run dev`            | Servidor y web en modo desarrollo                         |
 | `npm run build`          | Compila la web en `dist/`                                 |
+| `npm run build:static`   | Compila la versión estática con los datos (GitHub Pages)  |
 | `npm start`              | Servidor de producción (sirve la API y `dist/`)           |
 | `npm run fetch:endesa`   | Sincroniza el consumo (`-- --contract portales` para uno) |
 | `npm run fetch:backfill` | Descarga todo el histórico disponible en Endesa           |
@@ -104,17 +104,24 @@ Todas las variables están en [`.env.example`](.env.example).
 
 ## Despliegue
 
-El proyecto incluye un `Dockerfile` listo para [Railway](https://railway.app) o cualquier servicio que use Docker:
+### GitHub Pages (gratis)
 
-1. **New Project → Deploy from GitHub repo**. Railway detecta el `Dockerfile`.
-2. Añade las variables de entorno en **Settings → Variables**.
-3. Monta un **volumen** en `/app/server/data` para que los datos sobrevivan a cada despliegue.
-4. Genera un dominio en **Settings → Networking**.
+El workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) sincroniza con Endesa cada 6 horas, guarda los datos nuevos en el repositorio y publica la web en GitHub Pages. También se ejecuta con cada `git push` a `main` y se puede lanzar a mano desde la pestaña **Actions**.
 
-Cada `git push` vuelve a desplegar.
+Para activarlo, una sola vez:
+
+1. **Settings → Pages → Build and deployment → Source:** elige **GitHub Actions**.
+2. **Settings → Secrets and variables → Actions → New repository secret:** crea un secreto por cada variable de Endesa que uses (`ENDESA_PORTALES_USER`, `ENDESA_PORTALES_PASSWORD`, `ENDESA_PORTALES_CLIENT_ID`, `ENDESA_PORTALES_CONTRACT_ID`, `ENDESA_BILLING_USER`, `ENDESA_BILLING_PASSWORD`, `ENDESA_BILLING_SF_CONTRACT_ID` y, si los tienes, los de `ENDESA_COMUNES_*`).
+3. **Actions → Sincronizar y publicar → Run workflow** para la primera publicación.
+
+La web queda en `https://<usuario>.github.io/<repositorio>/`. Con el repositorio público, Actions y Pages no tienen coste.
+
+### Docker
+
+El `Dockerfile` levanta el servidor completo (API y sincronización en segundo plano) en cualquier servicio que use Docker. Configura las mismas variables de entorno y monta un volumen en `/app/server/data` para que los datos sobrevivan a cada despliegue.
 
 > [!IMPORTANT]
-> La web no tiene inicio de sesión: cualquiera con la URL puede ver los datos. Define `ADMIN_TOKEN` y, si no quieres que sea pública, protégela con la autenticación de tu plataforma.
+> La web no tiene inicio de sesión: cualquiera con la URL puede ver los datos.
 
 ## API
 
@@ -149,5 +156,6 @@ src/
   hooks/                 Peticiones con cache compartida
   utils/                 Formato es-ES y cálculos (resúmenes, tarifas, facturas)
   styles/global.css      Estilos y tema claro/oscuro
-scripts/                 Sincronización desde la línea de comandos
+scripts/                 Sincronización y exportación estática
+.github/workflows/       Sincronización programada y publicación en GitHub Pages
 ```

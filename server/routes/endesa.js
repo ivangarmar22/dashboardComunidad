@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { readData, getDataByRange } from '../utils/dataStore.js';
 import { getContract, BILLING_CONFIG } from '../config/endesa-contracts.js';
 import {
-  getPeriods,
+  listPeriods,
   ensurePeriodData,
   syncContract,
   syncBilling,
@@ -41,30 +41,6 @@ function requireAdmin(req, res, next) {
   res.status(401).json({ success: false, error: 'No autorizado' });
 }
 
-// Zonas Comunes no tiene API de consumo: cada factura cubre desde la emisión anterior
-function periodsFromBilling() {
-  const invoices = [...readData(BILLING_CONFIG.dataFile)].sort((a, b) =>
-    b.fEmision.localeCompare(a.fEmision),
-  );
-  return invoices.map((inv, idx) => {
-    let from = invoices[idx + 1]?.fEmision;
-    if (!from) {
-      const d = new Date(`${inv.fEmision}T12:00:00Z`);
-      d.setUTCDate(d.getUTCDate() - 30);
-      from = d.toISOString().slice(0, 10);
-    }
-    return {
-      from,
-      to: inv.fEmision,
-      consumption: inv.consumo,
-      isCurrent: idx === 0,
-      isBilling: true,
-      importe: inv.importe,
-      numFact: inv.numFact,
-    };
-  });
-}
-
 router.get('/billing', async (_req, res) => {
   let data = readData(BILLING_CONFIG.dataFile);
 
@@ -87,19 +63,7 @@ router.post('/billing/refresh', requireAdmin, async (_req, res) => {
 });
 
 router.get('/:contractKey/periods', resolveContract, async (req, res) => {
-  const cfg = req.contractConfig;
-  let result = await getPeriods(cfg);
-
-  if (result.periods.length === 0 && cfg.key === 'comunes') {
-    result = { periods: periodsFromBilling(), consumptionMean: null, source: 'billing' };
-  }
-
-  const periods = [...result.periods].sort((a, b) => {
-    if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
-    return b.from.localeCompare(a.from);
-  });
-
-  res.json({ success: true, ...result, periods });
+  res.json({ success: true, ...(await listPeriods(req.contractConfig)) });
 });
 
 router.post('/:contractKey/period', resolveContract, async (req, res) => {

@@ -9,7 +9,6 @@ import { fmtNum0, fmtNum3, fmtEur, fmtPrice, fmtDate, fmtDayMonth } from '../uti
 
 const pricePerKwh = (p) => (p?.consumption > 0 ? p.importe / p.consumption : null);
 
-// Período de un contrato del que solo hay facturas (sin datos diarios)
 function BillingPeriod({ period, periods, onSelectPeriod }) {
   const { tokens: t } = useTheme();
   const billing = useBilling();

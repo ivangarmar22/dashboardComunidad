@@ -107,12 +107,10 @@ export function hourlyProfile(days) {
   };
 }
 
-/** Los `length` días anteriores a `from` */
 export function previousWindow(allDays, from, length) {
   return allDays.filter((d) => d.date < from).slice(-length);
 }
 
-/** Variación relativa de `current` respecto a `previous` */
 export function change(current, previous) {
   if (current == null || !previous) return null;
   return (current - previous) / previous;
@@ -136,7 +134,6 @@ export function monthlyFromDays(days) {
     });
 }
 
-/** Días naturales entre dos fechas YYYY-MM-DD */
 export function daysBetween(from, to) {
   return Math.round((parseISODate(to) - parseISODate(from)) / 86400000);
 }

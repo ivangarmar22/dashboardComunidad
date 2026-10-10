@@ -12,7 +12,7 @@ const COLUMNS = [
   { key: 'avgKwh', label: 'kWh/día', num: true, render: (r) => fmtNum(r.avgKwh) },
 ];
 
-// Media diaria por mes: comparable aunque el mes esté incompleto (que va más claro)
+// Media diaria y no total, para poder comparar los meses incompletos
 function MonthlyAverageChart({ monthly, color, withTable = false }) {
   const { tokens: t } = useTheme();
   const partialColor = mix(color, t.surface, t.ramp3);

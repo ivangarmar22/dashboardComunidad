@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useFetch } from '../hooks/useFetch.js';
-import { useConsumption } from '../hooks/useConsumption.js';
+import { useConsumption, usePeriodDays } from '../hooks/useConsumption.js';
 import { useTheme } from '../theme.jsx';
 import { mix } from '../charts/setup.js';
 import BarChart from '../charts/BarChart.jsx';
@@ -52,9 +51,9 @@ const everyThirdTick = (i, label) => (i % 3 === 0 ? label : '');
 function ConsumptionPeriod({ contractKey, period }) {
   const { tokens: t } = useTheme();
   const color = t[contractKey];
-  const req = useFetch(`/api/endesa/${contractKey}/period`, { method: 'POST', body: period });
+  const req = usePeriodDays(contractKey, period);
   const history = useConsumption(contractKey);
-  const days = useMemo(() => req.data?.data ?? [], [req.data]);
+  const { days } = req;
   const [selectedDate, setSelectedDate] = useState(null);
 
   const summary = useMemo(() => summarize(days), [days]);

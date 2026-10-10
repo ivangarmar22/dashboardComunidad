@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useFetch } from '../hooks/useFetch.js';
-import { useConsumption } from '../hooks/useConsumption.js';
+import { useConsumption, usePeriodDays } from '../hooks/useConsumption.js';
+import { endpoints } from '../api.js';
 import PeriodPicker from './PeriodPicker.jsx';
 import ConsumptionPeriod from './ConsumptionPeriod.jsx';
 import BillingPeriod from './BillingPeriod.jsx';
@@ -40,9 +41,8 @@ function BillingLede({ period, previous }) {
 }
 
 function ConsumptionLede({ contractKey, period }) {
-  const { data } = useFetch(`/api/endesa/${contractKey}/period`, { method: 'POST', body: period });
+  const { days } = usePeriodDays(contractKey, period);
   const history = useConsumption(contractKey);
-  const days = data?.data ?? [];
   const summary = summarize(days);
   if (!summary) return <p className="lede">Período {fmtRange(period.from, period.to)}.</p>;
 
@@ -74,7 +74,7 @@ function ConsumptionLede({ contractKey, period }) {
 
 function ContractView({ contractKey }) {
   const info = CONTRACT_INFO[contractKey];
-  const periodsReq = useFetch(`/api/endesa/${contractKey}/periods`);
+  const periodsReq = useFetch(endpoints.periods(contractKey));
   const periods = periodsReq.data?.periods ?? [];
   const [selected, setSelected] = useState(0);
   const period = periods[selected] ?? null;

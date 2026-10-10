@@ -71,7 +71,7 @@ function App() {
     <div className="shell">
       <header className="masthead">
         <div className="brand">
-          <img src="/logo.png" alt="" width="34" height="34" />
+          <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" width="34" height="34" />
           <div>
             <h1>Terrazas del Cañaveral</h1>
             <span className="brand-eyebrow">Comunidad · Electricidad</span>

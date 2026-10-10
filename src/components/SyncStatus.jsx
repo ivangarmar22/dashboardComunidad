@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useFetch } from '../hooks/useFetch.js';
+import { endpoints } from '../api.js';
 import { fmtRelative, fmtDayMonth } from '../utils/format.js';
 
 function useNow(intervalMs) {
@@ -58,7 +59,7 @@ function describe(data, now) {
 }
 
 function SyncStatus() {
-  const { data } = useFetch('/api/status', { refreshInterval: 60000 });
+  const { data } = useFetch(endpoints.status(), { refreshInterval: 60000 });
   const now = useNow(60000);
   if (!data) return null;
 

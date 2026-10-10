@@ -140,9 +140,9 @@ function refreshPeriods(cfg) {
 }
 
 // Cache reciente > Endesa > cache antigua > datos locales. Con cache nunca se espera a Endesa.
-export async function getPeriods(cfg) {
+export async function getPeriods(cfg, { offline = false } = {}) {
   const cached = readJson(periodsFile(cfg), null);
-  const canFetch = hasConsumptionCredentials(cfg);
+  const canFetch = !offline && hasConsumptionCredentials(cfg);
 
   if (cached) {
     const age = Date.now() - new Date(cached.fetchedAt).getTime();
@@ -160,6 +160,43 @@ export async function getPeriods(cfg) {
   }
 
   return { periods: periodsFromLocalData(cfg), consumptionMean: null, source: 'local' };
+}
+
+// Zonas comunes no tiene API de consumo: cada factura cubre desde la emisión anterior
+function periodsFromBilling() {
+  const invoices = [...readData(BILLING_CONFIG.dataFile)].sort((a, b) =>
+    b.fEmision.localeCompare(a.fEmision),
+  );
+  return invoices.map((inv, idx) => {
+    let from = invoices[idx + 1]?.fEmision;
+    if (!from) {
+      const d = new Date(`${inv.fEmision}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - 30);
+      from = d.toISOString().slice(0, 10);
+    }
+    return {
+      from,
+      to: inv.fEmision,
+      consumption: inv.consumo,
+      isCurrent: idx === 0,
+      isBilling: true,
+      importe: inv.importe,
+      numFact: inv.numFact,
+    };
+  });
+}
+
+// El período en curso primero y el resto del más reciente al más antiguo
+export async function listPeriods(cfg, options) {
+  let result = await getPeriods(cfg, options);
+  if (result.periods.length === 0 && cfg.key === 'comunes') {
+    result = { periods: periodsFromBilling(), consumptionMean: null, source: 'billing' };
+  }
+  const periods = [...result.periods].sort((a, b) => {
+    if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+    return b.from.localeCompare(a.from);
+  });
+  return { ...result, periods };
 }
 
 function isIncomplete(cfg, period) {
