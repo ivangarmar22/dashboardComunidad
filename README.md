@@ -38,7 +38,7 @@ Panel del consumo eléctrico de una comunidad de vecinos: facturas de las zonas 
 ```mermaid
 flowchart LR
   E[(Endesa<br/>área cliente y Mi Empresa)]
-  S[GitHub Actions<br/>cada 6 h]
+  S[GitHub Actions<br/>una vez al día]
   D[(server/data<br/>JSON en el repo)]
   P[GitHub Pages<br/>web estática]
 
@@ -106,7 +106,7 @@ Todas las variables están en [`.env.example`](.env.example).
 
 ### GitHub Pages (gratis)
 
-El workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) sincroniza con Endesa cada 6 horas, guarda los datos nuevos en el repositorio y publica la web en GitHub Pages. También se ejecuta con cada `git push` a `main` y se puede lanzar a mano desde la pestaña **Actions**.
+El workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) sincroniza con Endesa una vez al día, guarda los datos nuevos en el repositorio y publica la web en GitHub Pages. También se ejecuta con cada `git push` a `main` y se puede lanzar a mano desde la pestaña **Actions**.
 
 Para activarlo, una sola vez:
 

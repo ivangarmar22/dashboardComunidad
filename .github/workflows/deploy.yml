@@ -2,8 +2,8 @@ name: Sincronizar y publicar
 
 on:
   schedule:
-    # Cada 6 horas (UTC), fuera de la hora en punto para evitar colas
-    - cron: '17 */6 * * *'
+    # Una vez al día (06:17 UTC); las facturas son mensuales y menos intentos evitan el captcha
+    - cron: '17 6 * * *'
   push:
     branches: [main]
   workflow_dispatch:
@@ -46,7 +46,7 @@ jobs:
       ENDESA_BILLING_COOKIE: ${{ secrets.ENDESA_BILLING_COOKIE }}
       ENDESA_BILLING_AURA_TOKEN: ${{ secrets.ENDESA_BILLING_AURA_TOKEN }}
       ENDESA_BILLING_AURA_FWUID: ${{ secrets.ENDESA_BILLING_AURA_FWUID }}
-      SYNC_INTERVAL_HOURS: 6
+      SYNC_INTERVAL_HOURS: 24
       BASE_PATH: /${{ github.event.repository.name }}/
     steps:
       - uses: actions/checkout@v7

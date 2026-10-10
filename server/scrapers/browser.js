@@ -52,12 +52,11 @@ export async function waitForLoginToLeave(page, { isLoginUrl, timeout, ErrorClas
   try {
     await page.waitForURL((url) => !isLoginUrl(url), { timeout });
   } catch {
-    const captcha = await page
-      .locator('iframe[src*="recaptcha"], iframe[title*="captcha" i]')
-      .filter({ visible: true })
-      .count()
-      .catch(() => 0);
-    if (captcha > 0) {
+    // El widget de reCAPTCHA va en un iframe anidado que los selectores no alcanzan
+    const captcha = page
+      .frames()
+      .some((frame) => /recaptcha\/(api2|enterprise)\/anchor/.test(frame.url()));
+    if (captcha) {
       throw new ErrorClass('Endesa pide un captcha; reintenta más tarde o usa una sesión manual');
     }
     const messages = await visibleMessages(page);
