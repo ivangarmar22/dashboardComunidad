@@ -1,10 +1,11 @@
 import luzComunes from '../data/luz-comunes.json';
 import luzPortales from '../data/luz-portales.json';
 import agua from '../data/agua.json';
-import { enrichInvoices } from './utils/analytics.js';
+import { enrichInvoices, groupInvoices } from './utils/analytics.js';
 import { fmtNum, fmtNum0 } from './utils/format.js';
 
 const newestFirst = (list) => [...list].sort((a, b) => b.fEmision.localeCompare(a.fEmision));
+const waterMeters = new Set(agua.map((i) => i.contador)).size;
 
 export const SUPPLIES = {
   comunes: {
@@ -33,13 +34,17 @@ export const SUPPLIES = {
     key: 'agua',
     kind: 'invoices',
     title: 'Agua',
-    kicker: 'Agua · Riego y piscina',
+    kicker: `Agua · ${waterMeters} contadores`,
     tab: 'Agua',
     shortTab: 'Agua',
     unit: 'm³',
     formatQty: fmtNum,
     inclusiveDays: true,
-    amountChart: true,
-    invoices: enrichInvoices(newestFirst(agua)),
+    grouped: true,
+    meters: waterMeters,
+    uses: ['Riego y piscina', 'Zonas comunes', 'Contra incendios'],
+    invoices: enrichInvoices(newestFirst(groupInvoices(agua, (i) => i.periodo)), {
+      flagOutliers: false,
+    }),
   },
 };

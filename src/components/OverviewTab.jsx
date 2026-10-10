@@ -59,7 +59,7 @@ function InvoiceCard({ supply, onOpen }) {
     <SupplyCard supply={supply} onOpen={onOpen}>
       <div className="contract-figures">
         <Stat
-          label="Última factura"
+          label={supply.grouped ? 'Último período' : 'Última factura'}
           value={last && fmtEur(last.importe)}
           unit="€"
           foot={delta != null && <Delta value={delta} suffix="vs. anterior" />}
@@ -136,7 +136,10 @@ function InvoiceYearPanel({ supply }) {
   const chrono = useMemo(() => yearOfInvoices(supply), [supply]);
   const labels = useMemo(() => chrono.map((i) => fmtDayMonth(i.fEmision)), [chrono]);
   const values = useMemo(() => chrono.map((i) => i.consumo), [chrono]);
-  const tooltipTitle = useCallback((i) => `Factura del ${fmtDate(chrono[i].fEmision)}`, [chrono]);
+  const tooltipTitle = useCallback(
+    (i) => `${supply.grouped ? 'Facturas' : 'Factura'} del ${fmtDate(chrono[i].fEmision)}`,
+    [chrono, supply],
+  );
   const tooltipLabel = useCallback(
     (i) => `${supply.formatQty(chrono[i].consumo)} ${supply.unit} · ${fmtEur(chrono[i].importe)} €`,
     [chrono, supply],
@@ -144,7 +147,7 @@ function InvoiceYearPanel({ supply }) {
 
   return (
     <Panel
-      title={`${supply.title} · ${supply.unit} por factura, último año`}
+      title={`${supply.title} · ${supply.unit} por ${supply.grouped ? 'período' : 'factura'}, último año`}
       className={`entity-${supply.key}`}
     >
       {chrono.length > 0 ? (
@@ -171,12 +174,14 @@ function LastInvoiceText({ supply, label }) {
   const delta = previous && change(last.importe, previous.importe);
   return (
     <>
-      La última factura {label}, del <strong>{fmtDate(last.fEmision)}</strong>, fue de{' '}
+      {supply.grouped ? 'Las últimas facturas' : 'La última factura'} {label}, del{' '}
+      <strong>{fmtDate(last.fEmision)}</strong>, {supply.grouped ? 'suman' : 'fue de'}{' '}
       <strong>{fmtEur(last.importe)}&nbsp;€</strong>
       {delta != null && (
         <>
           {' '}
-          ({delta < 0 ? 'baja' : 'sube'} un {fmtPct(Math.abs(delta))} respecto a la anterior)
+          ({delta < 0 ? 'baja' : 'sube'} un {fmtPct(Math.abs(delta))} respecto{' '}
+          {supply.grouped ? 'al período anterior' : 'a la anterior'})
         </>
       )}
       .{' '}

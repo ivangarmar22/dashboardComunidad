@@ -1,16 +1,21 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useTheme } from '../theme.jsx';
+import { alpha, mix } from '../charts/setup.js';
 import BarChart from '../charts/BarChart.jsx';
 import BillingTable from './BillingTable.jsx';
+import MeterTable from './MeterTable.jsx';
 import { Stat, Delta, Section, Panel, RangeFilter, WarnIcon } from './ui.jsx';
 import { change, daysBetween, takeLast } from '../utils/analytics.js';
 import { fmtNum0, fmtNum3, fmtEur, fmtPrice, fmtDate, fmtDayMonth } from '../utils/format.js';
 
 const unitPrice = (p) => (p?.consumption > 0 ? p.importe / p.consumption : null);
 
+const sumByUse = (inv, use, field) =>
+  inv.parts.filter((p) => p.uso === use).reduce((total, p) => total + (p[field] || 0), 0);
+
 function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
   const { tokens: t } = useTheme();
-  const { invoices, unit, formatQty, amountChart } = supply;
+  const { invoices, unit, formatQty, grouped, uses } = supply;
   const color = t[supply.key];
   const priceUnit = `€/${unit}`;
   const previous = periods[periods.indexOf(period) + 1];
@@ -18,6 +23,11 @@ function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
   const pending = period.consumption == null;
   const price = unitPrice(period);
   const [range, setRange] = useState(12);
+
+  const useColors = useMemo(
+    () => [color, mix(color, t.surface, t.ramp2), mix(color, t.surface, t.ramp3)],
+    [color, t.surface, t.ramp2, t.ramp3],
+  );
 
   const chart = useMemo(() => {
     const chrono = takeLast([...invoices].reverse(), range);
@@ -27,40 +37,51 @@ function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
       chrono.length > 1 && daysBetween(chrono[0].fEmision, chrono.at(-1).fEmision) > 365;
     const label = (i) =>
       spansYears ? `${fmtDayMonth(i.fEmision)} ${i.fEmision.slice(2, 4)}` : fmtDayMonth(i.fEmision);
+    const stacks = (field) =>
+      uses?.map((use, i) => ({
+        label: use,
+        color: useColors[i],
+        values: chrono.map((inv) => sumByUse(inv, use, field)),
+      }));
+    const selected = chrono.findIndex((i) => i.numFact === period.numFact);
     return {
       chrono,
       labels: chrono.map(label),
       quantities: chrono.map((i) => i.consumo),
-      amounts: chrono.map((i) => i.importe),
       prices: chrono.map((i) => i.pricePerKwh),
       colors: chrono.map(barColor),
       priceColors: chrono.map((i) => (i.isOutlier ? t.warn : barColor(i))),
       hasOutliers: chrono.some((i) => i.isOutlier),
+      quantityStacks: grouped ? stacks('consumo') : null,
+      amountStacks: grouped ? stacks('importe') : null,
+      selected: selected >= 0 ? selected : null,
     };
-  }, [invoices, range, period.numFact, color, t.ink, t.warn]);
+  }, [invoices, range, period.numFact, color, grouped, uses, useColors, t.ink, t.warn]);
 
   const invoiceTitle = useCallback(
-    (i) => {
-      const inv = chart.chrono[i];
-      return `Factura del ${fmtDate(inv.fEmision)}${inv.uso ? ` · ${inv.uso}` : ''}`;
-    },
-    [chart],
+    (i) => `${grouped ? 'Facturas' : 'Factura'} del ${fmtDate(chart.chrono[i].fEmision)}`,
+    [chart, grouped],
   );
   const quantityLabel = useCallback(
-    (i) => {
+    (i, stack) => {
       const inv = chart.chrono[i];
+      if (grouped) {
+        return `${uses[stack]}: ${formatQty(chart.quantityStacks[stack].values[i])} ${unit}`;
+      }
       const quantity =
         inv.consumo == null ? 'Consumo pendiente' : `${formatQty(inv.consumo)} ${unit}`;
       return `${quantity} · ${fmtEur(inv.importe)} €`;
     },
-    [chart, formatQty, unit],
+    [chart, grouped, uses, formatQty, unit],
   );
   const amountLabel = useCallback(
+    (i, stack) => `${uses[stack]}: ${fmtEur(chart.amountStacks[stack].values[i])} €`,
+    [chart, uses],
+  );
+  const totalFooter = useCallback(
     (i) => {
       const inv = chart.chrono[i];
-      const quantity =
-        inv.consumo == null ? 'consumo pendiente' : `${formatQty(inv.consumo)} ${unit}`;
-      return `${fmtEur(inv.importe)} € · ${quantity}`;
+      return `Total: ${formatQty(inv.consumo)} ${unit} · ${fmtEur(inv.importe)} €`;
     },
     [chart, formatQty, unit],
   );
@@ -88,10 +109,17 @@ function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
     versusPrevious(price, unitPrice(previous))
   );
 
-  const legend = [
-    { label: 'Factura', color },
-    { label: 'Seleccionada', color: t.ink },
-  ];
+  const legend = grouped
+    ? [
+        ...uses.map((use, i) => ({ label: use, color: useColors[i] })),
+        { label: 'Seleccionado', color: alpha(t.ink, 0.12) },
+      ]
+    : [
+        { label: 'Factura', color },
+        { label: 'Seleccionada', color: t.ink },
+      ];
+
+  const invoiceCount = invoices.reduce((n, i) => n + (i.parts?.length ?? 1), 0);
 
   return (
     <div>
@@ -124,7 +152,11 @@ function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
       <Section
         num="01"
         title="Facturas"
-        note={`${amountChart ? 'Consumo e importe' : `Consumo y precio por ${unit}`} de cada factura, por fecha de emisión. Pulsa una barra para ver esa factura.`}
+        note={
+          grouped
+            ? `Consumo e importe de cada período, sumando los ${supply.meters} contadores. Pulsa una barra para ver ese período.`
+            : `Consumo y precio por ${unit} de cada factura, por fecha de emisión. Pulsa una barra para ver esa factura.`
+        }
         aside={<RangeFilter total={invoices.length} value={range} onChange={setRange} />}
       >
         <div className="grid-halves">
@@ -133,25 +165,29 @@ function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
               labels={chart.labels}
               values={chart.quantities}
               colors={chart.colors}
+              stacks={chart.quantityStacks}
+              highlight={grouped ? chart.selected : null}
               yTitle={unit}
               onSelect={selectInvoice}
               tooltipTitle={invoiceTitle}
               tooltipLabel={quantityLabel}
+              tooltipFooter={grouped ? totalFooter : null}
               short
               ariaLabel="Consumo por factura"
             />
           </Panel>
-          {amountChart ? (
+          {grouped ? (
             <Panel title="Importe facturado" legend={legend}>
               <BarChart
                 labels={chart.labels}
-                values={chart.amounts}
-                colors={chart.colors}
+                stacks={chart.amountStacks}
+                highlight={chart.selected}
                 yTitle="€"
                 yFormat={fmtNum0}
                 onSelect={selectInvoice}
                 tooltipTitle={invoiceTitle}
                 tooltipLabel={amountLabel}
+                tooltipFooter={totalFooter}
                 short
                 ariaLabel="Importe por factura"
               />
@@ -181,7 +217,25 @@ function InvoicePeriod({ supply, period, periods, onSelectPeriod }) {
         </div>
       </Section>
 
-      <Section num="02" title="Historial de facturas" aside={`${invoices.length} facturas`}>
+      {period.parts && (
+        <Section
+          num="02"
+          title="Contadores"
+          note={`Las ${period.parts.length} facturas de este período, una por contador.`}
+        >
+          <MeterTable parts={period.parts} uses={uses} unit={unit} formatQty={formatQty} />
+        </Section>
+      )}
+
+      <Section
+        num={period.parts ? '03' : '02'}
+        title="Historial de facturas"
+        aside={
+          grouped
+            ? `${invoiceCount} facturas en ${invoices.length} períodos`
+            : `${invoices.length} facturas`
+        }
+      >
         <BillingTable invoices={invoices} unit={unit} formatQty={formatQty} maxRows={10} />
       </Section>
     </div>

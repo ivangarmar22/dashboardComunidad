@@ -4,6 +4,7 @@ import { averagePrice } from '../utils/analytics.js';
 import { Empty, WarnIcon } from './ui.jsx';
 
 const sum = (rows, field) => rows.reduce((total, row) => total + (row[field] || 0), 0);
+const reference = (inv) => (inv.parts ? `${inv.parts.length} facturas` : inv.numFact);
 
 function OutlierNote({ invoices, unit }) {
   return (
@@ -67,6 +68,8 @@ function BillingTable({ invoices, unit, formatQty, limit, maxRows }) {
   const totalConsumo = sum(rows, 'consumo');
   const outliers = rows.filter((i) => i.isOutlier);
   const scrollable = Boolean(maxRows) && rows.length > maxRows;
+  const grouped = rows.some((i) => i.parts);
+  const invoiceCount = rows.reduce((n, i) => n + (i.parts?.length ?? 1), 0);
 
   return (
     <>
@@ -76,14 +79,14 @@ function BillingTable({ invoices, unit, formatQty, limit, maxRows }) {
         {...(scrollable && {
           tabIndex: 0,
           role: 'region',
-          'aria-label': `Historial de ${rows.length} facturas, desplazable`,
+          'aria-label': 'Historial de facturas, desplazable',
         })}
       >
         <table className="table table-billing">
           <thead>
             <tr>
               <th className="col-date">Emisión</th>
-              <th className="col-ref hide-sm">Factura</th>
+              <th className="col-ref hide-sm">{grouped ? 'Facturas' : 'Factura'}</th>
               <th className="col-kwh is-num">
                 Consumo<span className="show-sm-inline"> {unit}</span>
               </th>
@@ -99,10 +102,11 @@ function BillingTable({ invoices, unit, formatQty, limit, maxRows }) {
               <tr key={inv.numFact}>
                 <td>
                   {fmtDate(inv.fEmision)}
-                  {inv.uso && <span className="cell-sub">{inv.uso}</span>}
-                  <span className="cell-sub mono show-sm">{inv.numFact}</span>
+                  <span className={`cell-sub show-sm${inv.parts ? '' : ' mono'}`}>
+                    {reference(inv)}
+                  </span>
                 </td>
-                <td className="mono muted hide-sm">{inv.numFact}</td>
+                <td className={`muted hide-sm${inv.parts ? '' : ' mono'}`}>{reference(inv)}</td>
                 <td className="is-num">
                   {inv.consumo == null ? (
                     <span className="muted" title="Consumo pendiente de la factura completa">
@@ -147,7 +151,7 @@ function BillingTable({ invoices, unit, formatQty, limit, maxRows }) {
           <tfoot>
             <tr>
               <td className="total-label">
-                Total<span className="total-count hide-sm">{rows.length} facturas</span>
+                Total<span className="total-count hide-sm">{invoiceCount} facturas</span>
               </td>
               <td className="hide-sm" />
               <td className="is-num">
@@ -165,9 +169,7 @@ function BillingTable({ invoices, unit, formatQty, limit, maxRows }) {
         </table>
       </div>
 
-      {scrollable && (
-        <p className="table-hint">Desplaza la tabla para ver las {rows.length} facturas</p>
-      )}
+      {scrollable && <p className="table-hint">Desplaza la tabla para ver el resto</p>}
       {outliers.length > 0 && <OutlierNote invoices={outliers} unit={unit} />}
     </>
   );

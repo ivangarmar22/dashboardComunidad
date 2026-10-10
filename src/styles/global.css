@@ -1183,12 +1183,16 @@ strong {
 }
 
 .table-billing th:first-child,
-.table-billing td:first-child {
+.table-billing td:first-child,
+.table-meters th:first-child,
+.table-meters td:first-child {
   padding-left: 16px;
 }
 
 .table-billing th:last-child,
-.table-billing td:last-child {
+.table-billing td:last-child,
+.table-meters th:last-child,
+.table-meters td:last-child {
   padding-right: 16px;
 }
 
@@ -1489,12 +1493,16 @@ strong {
   }
 
   .table-billing th:first-child,
-  .table-billing td:first-child {
+  .table-billing td:first-child,
+  .table-meters th:first-child,
+  .table-meters td:first-child {
     padding-left: 10px;
   }
 
   .table-billing th:last-child,
-  .table-billing td:last-child {
+  .table-billing td:last-child,
+  .table-meters th:last-child,
+  .table-meters td:last-child {
     padding-right: 10px;
   }
 
