@@ -7,6 +7,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      backfill:
+        description: Descargar todo el histórico disponible en Endesa
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -59,7 +64,7 @@ jobs:
       # Si Endesa falla se publica igualmente con los últimos datos guardados
       - name: Sincronizar con Endesa
         continue-on-error: true
-        run: npm run fetch:all
+        run: npm run fetch:all -- ${{ inputs.backfill && '--backfill' || '' }}
 
       - name: Guardar los datos nuevos en el repositorio
         run: |

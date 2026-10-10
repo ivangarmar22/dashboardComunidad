@@ -4,9 +4,9 @@
  * `aura.token` y `aura.context` de las propias peticiones de la página.
  */
 
-import { chromium } from 'playwright';
 import { BILLING_CONFIG } from '../config/endesa-contracts.js';
 import { readJson, writeJson } from '../utils/dataStore.js';
+import { BASE_UA, acceptCookies, launchBrowser, waitForLoginToLeave } from './browser.js';
 
 const SITE_ORIGIN = 'https://endesa-atenea.my.site.com';
 const SITE_BASE = `${SITE_ORIGIN}/miempresa/s/`;
@@ -17,8 +17,6 @@ const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_APP_LOADED = {
   'APPLICATION@markup://siteforce:communityApp': '1529_lI95rFcxq-le9BLgryC1ew',
 };
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 
 class BillingAuthError extends Error {}
 
@@ -55,18 +53,11 @@ async function loginWithBrowser(config) {
     throw new BillingAuthError('Faltan ENDESA_BILLING_USER y ENDESA_BILLING_PASSWORD');
   }
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-blink-features=AutomationControlled',
-    ],
-  });
+  const browser = await launchBrowser();
 
   try {
     const context = await browser.newContext({
-      userAgent: USER_AGENT,
+      userAgent: BASE_UA,
       locale: 'es-ES',
       timezoneId: 'Europe/Madrid',
     });
@@ -74,30 +65,25 @@ async function loginWithBrowser(config) {
 
     console.log('[Endesa/Billing] Iniciando sesión en Mi Empresa...');
     await page.goto(`${SITE_BASE}login/`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-
-    const cookieBanner = page.locator('#onetrust-accept-btn-handler');
-    if (await cookieBanner.isVisible({ timeout: 3000 }).catch(() => false))
-      await cookieBanner.click();
+    await acceptCookies(page);
 
     const userInput = page
-      .locator(
-        'input[name="username"], input[type="email"], input[autocomplete="username"], input[placeholder*="suario" i]',
-      )
+      .locator('input[name="Username"], input[name="username"], input[placeholder*="suario" i]')
       .first();
-    await userInput.waitFor({ timeout: 20000 });
+    await userInput.waitFor({ timeout: 30000 });
     await userInput.fill(config.user);
     await page.locator('input[type="password"]').first().fill(config.password);
-    await page
-      .locator(
-        'button[type="submit"], button:has-text("Acceder"), button:has-text("Iniciar"), button:has-text("Entrar")',
-      )
-      .first()
-      .click();
+    await page.locator('button:has-text("Acceder"), button[type="submit"]').first().click();
 
-    try {
-      await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 45000 });
-    } catch {
-      throw new BillingAuthError('Login no completado (¿credenciales incorrectas o captcha?)');
+    await waitForLoginToLeave(page, {
+      isLoginUrl: (url) => url.pathname.includes('/login'),
+      timeout: 45000,
+      ErrorClass: BillingAuthError,
+    });
+    if (/verification|identity|verificar/i.test(page.url())) {
+      throw new BillingAuthError(
+        'Mi Empresa pide verificar la identidad con un código; usa ENDESA_BILLING_COOKIE y ENDESA_BILLING_AURA_TOKEN',
+      );
     }
 
     // Cualquier llamada Aura de la portada lleva el token y el contexto
@@ -185,7 +171,7 @@ async function requestInvoices(session, config) {
         Cookie: session.cookie,
         Origin: SITE_ORIGIN,
         Referer: SITE_BASE,
-        'User-Agent': USER_AGENT,
+        'User-Agent': BASE_UA,
       },
     },
   );

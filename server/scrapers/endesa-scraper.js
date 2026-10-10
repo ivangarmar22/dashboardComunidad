@@ -3,11 +3,11 @@
  * iniciar sesión y capturar cookies + sessionId; los datos se piden a la API JSON.
  */
 
-import { chromium } from 'playwright';
 import { readJson, writeJson } from '../utils/dataStore.js';
+import { BASE_UA, acceptCookies, launchBrowser, waitForLoginToLeave } from './browser.js';
 
-const LOGIN_URL = 'https://www.endesa.com/es/login';
 const API_BASE = 'https://www.endesaclientes.com';
+const LOGIN_URL = `${API_BASE}/login.html?d=Any`;
 const POST_LOGIN_URL = `${API_BASE}/oficina/gestion-online.html?neolpostlogin=true`;
 const PATHS = {
   recent: '/neolapi-b2c-consumptions-rest/consumptions/opendetails',
@@ -17,8 +17,6 @@ const PATHS = {
 
 const COOKIE_TTL_MS = 4 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 30000;
-const BASE_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const AUTH_ERROR_HINTS = /sesi[oó]n|session|token|autentic|authori|login|caducad|expir/i;
 
 class EndesaAuthError extends Error {}
@@ -52,14 +50,7 @@ async function loginWithBrowser(cfg) {
     throw new EndesaAuthError(`Faltan usuario y contraseña de Endesa para ${cfg.key}`);
   }
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-blink-features=AutomationControlled',
-    ],
-  });
+  const browser = await launchBrowser();
 
   try {
     // UA del Chromium real sin la marca "HeadlessChrome", que algunos WAF bloquean
@@ -73,7 +64,6 @@ async function loginWithBrowser(cfg) {
       timezoneId: 'Europe/Madrid',
     });
     const page = await context.newPage();
-    await page.route(/\.(png|jpe?g|gif|webp|svg|woff2?|ttf|mp4)(\?|$)/i, (route) => route.abort());
 
     let sessionId = null;
     page.on('request', (request) => {
@@ -81,40 +71,22 @@ async function loginWithBrowser(cfg) {
     });
 
     log(cfg, 'Iniciando sesión...');
-    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await acceptCookies(page);
 
-    const cookieBanner = page.locator('#onetrust-accept-btn-handler');
-    if (await cookieBanner.isVisible({ timeout: 3000 }).catch(() => false))
-      await cookieBanner.click();
-
-    const emailInput = page
-      .locator('input[type="email"], input[name="email"], #email, input[name="user"]')
+    const userInput = page
+      .locator('#username, input[name="username"], input[type="email"]')
       .first();
-    await emailInput.waitFor({ timeout: 15000 });
-    await emailInput.fill(cfg.user);
-    await page
-      .locator('input[type="password"], input[name="password"], #password')
-      .first()
-      .fill(cfg.password);
-    await page.locator('button[type="submit"]').first().click();
+    await userInput.waitFor({ timeout: 30000 });
+    await userInput.fill(cfg.user);
+    await page.locator('#password, input[type="password"]').first().fill(cfg.password);
+    await page.locator('#loginButton, button[type="submit"]:has-text("Acceder")').first().click();
 
-    try {
-      await page.waitForURL(
-        (url) => url.href.includes('endesaclientes.com') || url.href.includes('area-cliente'),
-        { timeout: 30000 },
-      );
-    } catch {
-      if (page.url().includes('/login')) {
-        const message = await page
-          .locator('[role="alert"], .error, .alert-danger, .form-error')
-          .first()
-          .textContent({ timeout: 1000 })
-          .catch(() => null);
-        throw new EndesaAuthError(
-          `Login no completado${message ? `: ${message.trim()}` : ' (¿credenciales incorrectas o captcha?)'}`,
-        );
-      }
-    }
+    await waitForLoginToLeave(page, {
+      isLoginUrl: (url) => url.pathname.includes('login'),
+      timeout: 45000,
+      ErrorClass: EndesaAuthError,
+    });
 
     // La oficina online lanza peticiones con la cabecera `sessionid`
     const sessionRequest = page
