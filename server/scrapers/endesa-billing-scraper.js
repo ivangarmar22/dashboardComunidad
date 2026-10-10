@@ -15,7 +15,7 @@ const SESSION_CACHE_FILE = '.endesa-billing-session.json';
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 // Solo se usa si no se ha podido capturar la versión real de la app
 const DEFAULT_APP_LOADED = {
-  'APPLICATION@markup://siteforce:communityApp': '1529_lI95rFcxq-le9BLgryC1ew',
+  'APPLICATION@markup://siteforce:communityApp': '1888_-kKAFK7UHxK1kDSaicKEkw',
 };
 
 class BillingAuthError extends Error {}

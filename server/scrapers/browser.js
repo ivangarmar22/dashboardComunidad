@@ -52,6 +52,14 @@ export async function waitForLoginToLeave(page, { isLoginUrl, timeout, ErrorClas
   try {
     await page.waitForURL((url) => !isLoginUrl(url), { timeout });
   } catch {
+    const captcha = await page
+      .locator('iframe[src*="recaptcha"], iframe[title*="captcha" i]')
+      .filter({ visible: true })
+      .count()
+      .catch(() => 0);
+    if (captcha > 0) {
+      throw new ErrorClass('Endesa pide un captcha; reintenta más tarde o usa una sesión manual');
+    }
     const messages = await visibleMessages(page);
     const detail = messages.length
       ? messages.join(' | ')
