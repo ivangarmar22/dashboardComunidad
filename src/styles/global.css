@@ -15,6 +15,7 @@
 
   --c-comunes: #c4501a;
   --c-portales: #0a7fa0;
+  --c-agua: #5b4fc4;
   --c-neutral: #a39d90;
 
   --good: #006300;
@@ -48,6 +49,7 @@
   --border: rgba(255, 255, 255, 0.09);
   --c-comunes: #e0662c;
   --c-portales: #2a9cc0;
+  --c-agua: #7d72e6;
   --c-neutral: #6f6a60;
   --good: #2fb52f;
   --bad: #e66767;
@@ -62,6 +64,10 @@
 
 .entity-portales {
   --entity: var(--c-portales);
+}
+
+.entity-agua {
+  --entity: var(--c-agua);
 }
 
 /* Base */
@@ -127,11 +133,6 @@ strong {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
-}
-
-.is-refreshing {
-  opacity: 0.55;
-  transition: opacity 0.2s;
 }
 
 /* Cabecera */
@@ -210,6 +211,10 @@ strong {
   background: var(--ink);
 }
 
+.tab-label-short {
+  display: none;
+}
+
 .tab-swatch {
   display: inline-block;
   width: 8px;
@@ -226,38 +231,6 @@ strong {
   padding-bottom: 12px;
   font-size: 13px;
   color: var(--ink-3);
-}
-
-.sync-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-
-.sync-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--good);
-}
-
-.sync-dot.is-stale {
-  background: var(--warn-mark);
-}
-
-.sync-dot.is-error {
-  background: var(--bad);
-}
-
-.sync-dot.is-running {
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.25;
-  }
 }
 
 .theme-toggle {
@@ -371,14 +344,6 @@ strong {
   color: var(--ink-3);
 }
 
-.stat-loading {
-  width: 60%;
-  height: 38px;
-  border-radius: 4px;
-  background: var(--surface-2);
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
 .delta {
   display: inline-flex;
   align-items: center;
@@ -453,8 +418,20 @@ strong {
   transition: opacity 0.2s;
 }
 
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin-bottom: 12px;
+}
+
+.panel-head .legend {
+  margin-bottom: 0;
+}
+
 .panel-title {
-  margin-bottom: 10px;
   font-size: 13px;
   font-weight: 500;
   color: var(--ink-2);
@@ -481,10 +458,30 @@ strong {
   gap: 20px;
 }
 
-.grid-halves {
+/* Cada panel ocupa dos filas (cabecera y gráfico) compartidas con su vecino:
+   los gráficos arrancan a la misma altura aunque un panel tenga leyenda */
+.grid-halves,
+.grid-thirds {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
+  column-gap: 20px;
+}
+
+.grid-thirds {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grid-halves > .panel,
+.grid-thirds > .panel {
+  display: grid;
+  grid-row: span 2;
+  grid-template-rows: subgrid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Sin esto el gráfico no encoge al estrecharse la ventana (al girar el móvil) */
+.panel-body {
+  min-width: 0;
 }
 
 .empty {
@@ -492,14 +489,6 @@ strong {
   font-size: 14px;
   text-align: center;
   color: var(--ink-3);
-}
-
-.error-box {
-  padding: 14px 16px;
-  border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--bad);
 }
 
 .legend {
@@ -564,6 +553,55 @@ strong {
   max-height: 280px;
   margin-top: 10px;
   overflow: auto;
+}
+
+.table-scroll thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+}
+
+.range-filter-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.range-filter-label {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.range-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.range-filter-option {
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ink-2);
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.range-filter-option:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.range-filter-option[aria-pressed='true'] {
+  color: var(--page);
+  background: var(--ink);
 }
 
 /* Selector de períodos */
@@ -714,6 +752,41 @@ strong {
   text-transform: uppercase;
   color: var(--ink-2);
   background: var(--surface-2);
+}
+
+.periods-select {
+  display: none;
+  position: relative;
+}
+
+.periods-select::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--ink-2);
+  border-bottom: 1.5px solid var(--ink-2);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+
+.periods-select select {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 38px 10px 14px;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: inset 3px 0 0 var(--entity, var(--ink));
+  appearance: none;
+  cursor: pointer;
 }
 
 .periods-hint {
@@ -898,7 +971,7 @@ strong {
 
 .contracts {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 32px;
   border-top: 1px solid var(--ink);
 }
@@ -948,6 +1021,19 @@ strong {
   gap: 20px 24px;
 }
 
+.invoice-group + .invoice-group {
+  margin-top: 32px;
+}
+
+.invoice-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .contract-figures .stat {
   padding: 0;
   border: none;
@@ -963,6 +1049,28 @@ strong {
 .table-wrap {
   position: relative;
   overflow-x: auto;
+}
+
+/* Historial largo: scroll interno con cabecera y total siempre visibles */
+.table-wrap.is-scrollable {
+  overflow-y: auto;
+}
+
+.table-wrap.is-scrollable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-bottom: none;
+  background: var(--page);
+  box-shadow: inset 0 -1px 0 var(--baseline);
+}
+
+.table-wrap.is-scrollable tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  border-top: none;
+  box-shadow: inset 0 2px 0 var(--ink);
 }
 
 .table {
@@ -1033,6 +1141,12 @@ strong {
 .show-sm,
 .show-sm-inline {
   display: none;
+}
+
+.table-hint {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--ink-3);
 }
 
 .table-billing {
@@ -1138,8 +1252,25 @@ strong {
   }
 
   .grid-2,
-  .grid-halves {
+  .grid-halves,
+  .grid-thirds,
+  .contracts {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .grid-halves > .panel + .panel,
+  .grid-thirds > .panel + .panel {
+    margin-top: 20px;
+  }
+
+  .contract {
+    padding-right: 0;
+  }
+
+  .contract + .contract {
+    padding-left: 0;
+    border-top: 1px solid var(--border);
+    border-left: none;
   }
 
   .stats {
@@ -1179,8 +1310,12 @@ strong {
     margin-right: 6px;
   }
 
-  .sync-label {
+  .tab-label {
     display: none;
+  }
+
+  .tab-label-short {
+    display: inline;
   }
 
   .page-intro {
@@ -1205,16 +1340,6 @@ strong {
 
   .stat-value {
     font-size: 27px;
-  }
-
-  .contracts {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .contract + .contract {
-    padding-left: 0;
-    border-top: 1px solid var(--border);
-    border-left: none;
   }
 
   .section {
@@ -1243,29 +1368,19 @@ strong {
     height: 250px;
   }
 
-  .periods {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .period {
-    padding: 8px 9px 9px;
-  }
-
-  .period-range {
-    font-size: 13px;
-  }
-
-  .period-meta {
-    font-size: 12px;
-  }
-
-  .period-sep {
+  .periods,
+  .periods-years,
+  .periods-caption,
+  .periods-hint {
     display: none;
   }
 
-  .period-amount {
+  .periods-select {
     display: block;
+  }
+
+  .periods-bar {
+    justify-content: flex-end;
   }
 
   .periods-step {

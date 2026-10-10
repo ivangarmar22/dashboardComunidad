@@ -1,13 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useConsumption, usePeriodDays } from '../hooks/useConsumption.js';
 import { useTheme } from '../theme.jsx';
 import { mix } from '../charts/setup.js';
 import BarChart from '../charts/BarChart.jsx';
 import ProfileChart from '../charts/ProfileChart.jsx';
-import MonthlyAverageChart from '../charts/MonthlyAverageChart.jsx';
+import MonthlyAveragePanel from '../charts/MonthlyAveragePanel.jsx';
 import Heatmap from './Heatmap.jsx';
 import TariffBreakdown from './TariffBreakdown.jsx';
-import { Stat, Delta, Section, Panel, Legend, Empty, ErrorBox, DataDetails } from './ui.jsx';
+import { Stat, Delta, Section, Panel, Empty, DataDetails, RangeFilter } from './ui.jsx';
 import {
   summarize,
   tariffBreakdown,
@@ -16,6 +15,7 @@ import {
   previousWindow,
   change,
   monthlyFromDays,
+  takeLast,
   isValleDay,
   TARIFF_PERIODS,
 } from '../utils/analytics.js';
@@ -48,21 +48,25 @@ const dayTick = (i, label) => {
 };
 const everyThirdTick = (i, label) => (i % 3 === 0 ? label : '');
 
-function ConsumptionPeriod({ contractKey, period }) {
+function ConsumptionPeriod({ supply, period }) {
   const { tokens: t } = useTheme();
-  const color = t[contractKey];
-  const req = usePeriodDays(contractKey, period);
-  const history = useConsumption(contractKey);
-  const { days } = req;
+  const color = t[supply.key];
+  const allDays = supply.days;
+  const days = useMemo(
+    () => allDays.filter((d) => d.date >= period.from && d.date <= period.to),
+    [allDays, period.from, period.to],
+  );
   const [selectedDate, setSelectedDate] = useState(null);
+  const [monthRange, setMonthRange] = useState(12);
 
   const summary = useMemo(() => summarize(days), [days]);
   const breakdown = useMemo(() => tariffBreakdown(days), [days]);
   const profile = useMemo(() => hourlyProfile(days), [days]);
-  const monthly = useMemo(() => monthlyFromDays(history.data), [history.data]);
+  const monthly = useMemo(() => monthlyFromDays(allDays), [allDays]);
+  const visibleMonths = useMemo(() => takeLast(monthly, monthRange), [monthly, monthRange]);
   const previous = useMemo(
-    () => (days.length ? previousWindow(history.data, days[0].date, days.length) : []),
-    [history.data, days],
+    () => (days.length ? previousWindow(allDays, days[0].date, days.length) : []),
+    [allDays, days],
   );
   const previousSummary = previous.length >= days.length * 0.8 ? summarize(previous) : null;
   const day = days.find((d) => d.date === selectedDate) ?? days.at(-1);
@@ -109,21 +113,15 @@ function ConsumptionPeriod({ contractKey, period }) {
     [hours],
   );
 
-  if (req.loading) return <Empty>Cargando datos del período…</Empty>;
-  if (req.error) return <ErrorBox>No se pudieron cargar los datos: {req.error}</ErrorBox>;
   if (!summary) {
-    return (
-      <Empty>
-        No hay lecturas para este período. Endesa publica los datos con 1–2 días de retraso.
-      </Empty>
-    );
+    return <Empty>No hay lecturas para este período.</Empty>;
   }
 
   const avgDelta = previousSummary && change(summary.avgKwh, previousSummary.avgKwh);
   const baseDelta = previousSummary && change(summary.baseLoadKw, previousSummary.baseLoadKw);
 
   return (
-    <div className={req.refreshing ? 'is-refreshing' : undefined}>
+    <div>
       <div className="stats">
         <Stat
           label="Consumo del período"
@@ -170,7 +168,7 @@ function ConsumptionPeriod({ contractKey, period }) {
         note="La línea marca la media del período y las bandas grises, fines de semana y festivos. Pulsa una barra para ver ese día hora a hora."
         aside={`Máx. ${fmtNum1(summary.maxDay.totalKwh)} kWh el ${fmtDayMonth(summary.maxDay.date)}`}
       >
-        <Panel refreshing={req.refreshing}>
+        <Panel>
           <BarChart
             labels={daily.labels}
             values={daily.values}
@@ -202,13 +200,12 @@ function ConsumptionPeriod({ contractKey, period }) {
             </>
           }
         >
-          <Panel>
-            <Legend
-              items={TARIFF_PERIODS.map((p) => ({
-                label: `${p.label} (${p.id})`,
-                color: shades[p.id],
-              }))}
-            />
+          <Panel
+            legend={TARIFF_PERIODS.map((p) => ({
+              label: `${p.label} (${p.id})`,
+              color: shades[p.id],
+            }))}
+          >
             <BarChart
               labels={hours.labels}
               values={hours.values}
@@ -236,9 +233,7 @@ function ConsumptionPeriod({ contractKey, period }) {
 
       <Section num="04" title="Cómo se reparte el consumo">
         <div className="grid-2">
-          <Panel title="Perfil horario medio">
-            <ProfileChart profile={profile} color={color} />
-          </Panel>
+          <ProfileChart title="Perfil horario medio" profile={profile} color={color} />
           <Panel title="Por periodos de la tarifa 2.0TD">
             <TariffBreakdown breakdown={breakdown} />
             <p className="panel-caption">
@@ -253,10 +248,16 @@ function ConsumptionPeriod({ contractKey, period }) {
           num="05"
           title="Evolución mensual"
           note="Media de consumo diario de cada mes, para poder comparar también los meses incompletos."
+          aside={
+            <RangeFilter
+              total={monthly.length}
+              value={monthRange}
+              onChange={setMonthRange}
+              allLabel="Todos"
+            />
+          }
         >
-          <Panel refreshing={history.refreshing}>
-            <MonthlyAverageChart monthly={monthly} color={color} withTable />
-          </Panel>
+          <MonthlyAveragePanel monthly={visibleMonths} color={color} withTable />
         </Section>
       )}
     </div>

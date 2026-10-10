@@ -36,6 +36,7 @@ function readTokens() {
     baseline: v('--baseline'),
     comunes: v('--c-comunes'),
     portales: v('--c-portales'),
+    agua: v('--c-agua'),
     neutral: v('--c-neutral'),
     warn: v('--warn-mark'),
     ramp2: parseFloat(v('--ramp-2')) / 100 || 0.72,

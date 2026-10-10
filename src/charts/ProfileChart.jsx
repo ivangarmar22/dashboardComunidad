@@ -3,11 +3,11 @@ import { Line } from 'react-chartjs-2';
 import { useTheme } from '../theme.jsx';
 import { baseOptions } from './setup.js';
 import { fmtHourRange, fmtNum3 } from '../utils/format.js';
-import { Legend } from '../components/ui.jsx';
+import { Panel } from '../components/ui.jsx';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}h`);
 
-function ProfileChart({ profile, color }) {
+function ProfileChart({ title, profile, color }) {
   const { tokens: t } = useTheme();
 
   const series = useMemo(
@@ -67,15 +67,15 @@ function ProfileChart({ profile, color }) {
     return options;
   }, [t]);
 
-  if (series.length === 0) return null;
-
   return (
-    <>
-      <Legend items={series.map((s) => ({ label: s.legend, color: s.color, line: true }))} />
+    <Panel
+      title={title}
+      legend={series.map((s) => ({ label: s.legend, color: s.color, line: true }))}
+    >
       <div className="chart-box is-short" role="img" aria-label="Perfil horario medio de consumo">
         <Line data={data} options={options} />
       </div>
-    </>
+    </Panel>
   );
 }
 

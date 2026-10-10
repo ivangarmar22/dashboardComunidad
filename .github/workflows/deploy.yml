@@ -1,53 +1,20 @@
-name: Sincronizar y publicar
+name: Publicar
 
 on:
-  schedule:
-    # Una vez al día (06:17 UTC); las facturas son mensuales y menos intentos evitan el captcha
-    - cron: '17 6 * * *'
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      backfill:
-        description: Descargar todo el histórico disponible en Endesa
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: sync-and-deploy
-  cancel-in-progress: false
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: write
-    env:
-      ENDESA_COMUNES_USER: ${{ secrets.ENDESA_COMUNES_USER }}
-      ENDESA_COMUNES_PASSWORD: ${{ secrets.ENDESA_COMUNES_PASSWORD }}
-      ENDESA_COMUNES_CLIENT_ID: ${{ secrets.ENDESA_COMUNES_CLIENT_ID }}
-      ENDESA_COMUNES_CONTRACT_ID: ${{ secrets.ENDESA_COMUNES_CONTRACT_ID }}
-      ENDESA_PORTALES_USER: ${{ secrets.ENDESA_PORTALES_USER }}
-      ENDESA_PORTALES_PASSWORD: ${{ secrets.ENDESA_PORTALES_PASSWORD }}
-      ENDESA_PORTALES_CLIENT_ID: ${{ secrets.ENDESA_PORTALES_CLIENT_ID }}
-      ENDESA_PORTALES_CONTRACT_ID: ${{ secrets.ENDESA_PORTALES_CONTRACT_ID }}
-      ENDESA_BILLING_USER: ${{ secrets.ENDESA_BILLING_USER }}
-      ENDESA_BILLING_PASSWORD: ${{ secrets.ENDESA_BILLING_PASSWORD }}
-      ENDESA_BILLING_SF_CONTRACT_ID: ${{ secrets.ENDESA_BILLING_SF_CONTRACT_ID }}
-      # Opcionales: sesión manual si el login automático falla
-      ENDESA_COMUNES_COOKIE: ${{ secrets.ENDESA_COMUNES_COOKIE }}
-      ENDESA_COMUNES_SESSION_ID: ${{ secrets.ENDESA_COMUNES_SESSION_ID }}
-      ENDESA_PORTALES_COOKIE: ${{ secrets.ENDESA_PORTALES_COOKIE }}
-      ENDESA_PORTALES_SESSION_ID: ${{ secrets.ENDESA_PORTALES_SESSION_ID }}
-      ENDESA_BILLING_COOKIE: ${{ secrets.ENDESA_BILLING_COOKIE }}
-      ENDESA_BILLING_AURA_TOKEN: ${{ secrets.ENDESA_BILLING_AURA_TOKEN }}
-      ENDESA_BILLING_AURA_FWUID: ${{ secrets.ENDESA_BILLING_AURA_FWUID }}
-      SYNC_INTERVAL_HOURS: 24
-      BASE_PATH: /${{ github.event.repository.name }}/
     steps:
       - uses: actions/checkout@v7
 
@@ -58,29 +25,10 @@ jobs:
 
       - run: npm ci
 
-      - name: Instalar Chromium
-        run: npx playwright install --with-deps --only-shell chromium
-
-      # Si Endesa falla se publica igualmente con los últimos datos guardados
-      - name: Sincronizar con Endesa
-        continue-on-error: true
-        run: npm run fetch:all -- ${{ inputs.backfill && '--backfill' || '' }}
-
-      - name: Guardar los datos nuevos en el repositorio
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server/data
-          if git diff --cached --quiet; then
-            echo "Sin datos nuevos"
-          else
-            git commit -m "Actualizar datos de consumo"
-            git pull --rebase
-            git push
-          fi
-
       - name: Compilar la web
-        run: npm run build:static
+        run: npm run build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
 
       - uses: actions/configure-pages@v6
 

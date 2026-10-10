@@ -103,20 +103,8 @@ export function fmtRangeShort(from, to) {
     : `${fmtDayMonth(from)} – ${fmtDayMonth(to)}`;
 }
 
-/** Hora de Endesa (1-24, fin del tramo) -> "00:00–01:00" */
-export function fmtHourRange(endesaHour) {
+/** Hora 1-24 (fin del tramo) -> "00:00–01:00" */
+export function fmtHourRange(hour) {
   const pad = (h) => String(h).padStart(2, '0');
-  return `${pad(endesaHour - 1)}:00–${pad(endesaHour % 24)}:00`;
-}
-
-/** "hace 3 h", "ayer"... respecto a `now` */
-export function fmtRelative(iso, now) {
-  if (!iso) return '';
-  const minutes = Math.round((now - new Date(iso).getTime()) / 60000);
-  if (minutes < 1) return 'ahora mismo';
-  if (minutes < 60) return `hace ${minutes} min`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `hace ${hours} h`;
-  const days = Math.round(hours / 24);
-  return days === 1 ? 'ayer' : `hace ${days} días`;
+  return `${pad(hour - 1)}:00–${pad(hour % 24)}:00`;
 }

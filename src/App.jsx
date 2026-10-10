@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import OverviewTab from './components/OverviewTab.jsx';
-import ContractView from './components/ContractView.jsx';
-import SyncStatus from './components/SyncStatus.jsx';
+import SupplyView from './components/SupplyView.jsx';
+import { SUPPLIES } from './data.js';
 import { useTheme } from './theme.jsx';
 
 const TABS = [
-  { id: 'overview', label: 'Resumen' },
-  { id: 'comunes', label: 'Zonas comunes', swatch: 'var(--c-comunes)' },
-  { id: 'portales', label: 'Portales', swatch: 'var(--c-portales)' },
+  { id: 'overview', label: 'Resumen', shortLabel: 'Resumen' },
+  ...Object.values(SUPPLIES).map((s) => ({
+    id: s.key,
+    label: s.tab,
+    shortLabel: s.shortTab,
+    swatch: `var(--c-${s.key})`,
+  })),
 ];
 
 // La pestaña activa va en el hash (#portales) para poder enlazarla
@@ -74,7 +78,7 @@ function App() {
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" width="34" height="34" />
           <div>
             <h1>Terrazas del Cañaveral</h1>
-            <span className="brand-eyebrow">Comunidad · Electricidad</span>
+            <span className="brand-eyebrow">Comunidad · Luz y agua</span>
           </div>
         </div>
 
@@ -94,13 +98,13 @@ function App() {
                   aria-hidden="true"
                 />
               )}
-              {tab.label}
+              <span className="tab-label">{tab.label}</span>
+              <span className="tab-label-short">{tab.shortLabel}</span>
             </button>
           ))}
         </nav>
 
         <div className="masthead-meta">
-          <SyncStatus />
           <ThemeToggle />
         </div>
       </header>
@@ -109,7 +113,7 @@ function App() {
         {activeTab === 'overview' ? (
           <OverviewTab onNavigate={navigate} />
         ) : (
-          <ContractView key={activeTab} contractKey={activeTab} />
+          <SupplyView key={activeTab} supply={SUPPLIES[activeTab]} />
         )}
       </main>
     </div>

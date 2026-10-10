@@ -2,30 +2,18 @@
   "name": "terrazas-dashboard",
   "version": "1.0.0",
   "private": true,
-  "description": "Panel de consumo eléctrico de la comunidad Terrazas del Cañaveral (Endesa)",
+  "description": "Panel de luz y agua de la comunidad Terrazas del Cañaveral",
   "type": "module",
   "engines": {
     "node": ">=22.12"
   },
   "scripts": {
-    "dev": "concurrently -n api,web -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:client": "vite",
-    "dev:server": "node --watch server/index.js",
+    "dev": "vite",
     "build": "vite build",
-    "build:static": "vite build --mode static && node scripts/export-static.js",
-    "start": "node server/index.js",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "fetch:endesa": "node scripts/fetch-endesa.js",
-    "fetch:backfill": "node scripts/fetch-endesa.js --backfill",
-    "fetch:all": "node scripts/fetch-all.js"
-  },
-  "dependencies": {
-    "cors": "^2.8.6",
-    "express": "^5.3.0",
-    "playwright": "^1.64.0"
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -33,7 +21,6 @@
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "chart.js": "^4.5.1",
-    "concurrently": "^10.0.6",
     "eslint": "^10.12.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",

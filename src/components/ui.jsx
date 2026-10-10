@@ -49,16 +49,58 @@ export function Section({ num, title, note, aside, children }) {
   );
 }
 
-export function Panel({ title, children, refreshing = false, className = '' }) {
+// Cabecera y cuerpo separados: en .grid-halves la cabecera de los paneles vecinos
+// comparte altura y los gráficos empiezan a la misma altura aunque uno tenga leyenda
+export function Panel({ title, legend, children, refreshing = false, className = '' }) {
   return (
     <div className={`panel ${refreshing ? 'is-refreshing' : ''} ${className}`}>
-      {title && <h4 className="panel-title">{title}</h4>}
-      {children}
+      {(title || legend) && (
+        <div className="panel-head">
+          {title && <h4 className="panel-title">{title}</h4>}
+          {legend && <Legend items={legend} />}
+        </div>
+      )}
+      <div className="panel-body">{children}</div>
     </div>
   );
 }
 
-export function Legend({ items }) {
+/**
+ * Selector de cuántos elementos recientes mostrar. Solo ofrece las cantidades
+ * menores que el total, más la opción de verlos todos.
+ */
+export function RangeFilter({ total, value, onChange, steps = [6, 12, 24], allLabel = 'Todas' }) {
+  const options = steps.filter((n) => n < total);
+  if (options.length === 0) return null;
+  const choices = [
+    ...options.map((n) => ({ value: n, label: String(n) })),
+    { value: Infinity, label: `${allLabel} (${total})` },
+  ];
+  const current = value >= total ? Infinity : value;
+
+  return (
+    <div className="range-filter-wrap">
+      <span className="range-filter-label" aria-hidden="true">
+        Ver
+      </span>
+      <div className="range-filter" role="group" aria-label="Cantidad a mostrar">
+        {choices.map((c) => (
+          <button
+            key={c.label}
+            type="button"
+            className="range-filter-option"
+            aria-pressed={current === c.value}
+            onClick={() => onChange(c.value)}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Legend({ items }) {
   return (
     <div className="legend">
       {items.map((item) => (
@@ -76,14 +118,6 @@ export function Legend({ items }) {
 
 export function Empty({ children }) {
   return <div className="empty">{children}</div>;
-}
-
-export function ErrorBox({ children }) {
-  return (
-    <div className="error-box" role="alert">
-      {children}
-    </div>
-  );
 }
 
 // Tabla plegable con los datos del gráfico: ningún valor depende solo del tooltip

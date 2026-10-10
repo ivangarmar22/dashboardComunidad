@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { useTheme } from '../theme.jsx';
 import { mix } from './setup.js';
 import BarChart from './BarChart.jsx';
-import { DataDetails, Legend } from '../components/ui.jsx';
+import { DataDetails, Panel } from '../components/ui.jsx';
 import { fmtNum, fmtNum0, fmtNum1, fmtMonthShort, fmtMonthLong } from '../utils/format.js';
 
 const COLUMNS = [
@@ -13,7 +13,7 @@ const COLUMNS = [
 ];
 
 // Media diaria y no total, para poder comparar los meses incompletos
-function MonthlyAverageChart({ monthly, color, withTable = false }) {
+function MonthlyAveragePanel({ title, monthly, color, withTable = false, ...panelProps }) {
   const { tokens: t } = useTheme();
   const partialColor = mix(color, t.surface, t.ramp3);
 
@@ -26,8 +26,8 @@ function MonthlyAverageChart({ monthly, color, withTable = false }) {
     }),
     [monthly, color, partialColor],
   );
-  const title = useCallback((i) => fmtMonthLong(monthly[i].month), [monthly]);
-  const label = useCallback(
+  const tooltipTitle = useCallback((i) => fmtMonthLong(monthly[i].month), [monthly]);
+  const tooltipLabel = useCallback(
     (i) => {
       const m = monthly[i];
       const note = m.complete ? '' : ' (incompleto)';
@@ -36,29 +36,28 @@ function MonthlyAverageChart({ monthly, color, withTable = false }) {
     [monthly],
   );
 
+  const legend = chart.hasPartial
+    ? [
+        { label: 'Mes completo', color },
+        { label: 'Mes incompleto', color: partialColor },
+      ]
+    : null;
+
   return (
-    <>
-      {chart.hasPartial && (
-        <Legend
-          items={[
-            { label: 'Mes completo', color },
-            { label: 'Mes incompleto', color: partialColor },
-          ]}
-        />
-      )}
+    <Panel title={title} legend={legend} {...panelProps}>
       <BarChart
         labels={chart.labels}
         values={chart.values}
         colors={chart.colors}
         yTitle="kWh/día"
-        tooltipTitle={title}
-        tooltipLabel={label}
+        tooltipTitle={tooltipTitle}
+        tooltipLabel={tooltipLabel}
         short
         ariaLabel="Consumo medio diario por mes"
       />
       {withTable && <DataDetails columns={COLUMNS} rows={[...monthly].reverse()} />}
-    </>
+    </Panel>
   );
 }
 
-export default MonthlyAverageChart;
+export default MonthlyAveragePanel;

@@ -1,15 +1,6 @@
 node_modules/
 dist/
-.env
 *.log
 .DS_Store
 Thumbs.db
 .vscode/
-*.swp
-*.swo
-
-# Sesiones y estado de sincronización (contienen cookies/tokens)
-server/data/.endesa-*
-server/data/*.tmp
-server/data/sync-status.json
-server/data/endesa-*-periods.json

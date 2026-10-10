@@ -1,4 +1,4 @@
-// Endesa numera las horas de 1 a 24 por el final del tramo: la hora 1 es 00:00-01:00
+// Las lecturas horarias van de 1 a 24 y marcan el final del tramo: la hora 1 es 00:00-01:00
 
 import { parseISODate } from './format.js';
 
@@ -29,7 +29,7 @@ export function isValleDay(date) {
   return weekday === 0 || weekday === 6 || NATIONAL_HOLIDAYS.has(date.slice(5, 10));
 }
 
-/** Periodo 2.0TD de una hora de Endesa en una fecha */
+/** Periodo 2.0TD de una hora (1-24) en una fecha */
 export function tariffPeriod(date, endesaHour) {
   const start = endesaHour - 1;
   if (isValleDay(date) || start < 8) return 'P3';
@@ -178,4 +178,64 @@ export function invoiceStats(invoices) {
     avgPrice: totalConsumo > 0 ? totalImporte / totalConsumo : null,
     outliers: invoices.filter((i) => i.isOutlier),
   };
+}
+
+export const takeLast = (list, count) => (Number.isFinite(count) ? list.slice(-count) : list);
+
+/**
+ * Elementos de los últimos 12 meses (lista en orden cronológico). Se cuenta
+ * desde el más reciente y no desde hoy, porque los datos pueden ir con retraso.
+ * Acepta meses (YYYY-MM) o fechas (YYYY-MM-DD).
+ */
+export function lastTwelveMonths(list, getDate) {
+  if (list.length === 0) return list;
+  const latest = getDate(list.at(-1));
+  const [y, m, d] = latest.split('-').map(Number);
+  const from =
+    latest.length === 7
+      ? new Date(y, m - 12, 1).toLocaleDateString('sv-SE').slice(0, 7)
+      : new Date(y - 1, m - 1, d + 1).toLocaleDateString('sv-SE');
+  return list.filter((item) => getDate(item) >= from);
+}
+
+const isoDate = (date) => date.toLocaleDateString('sv-SE');
+
+/**
+ * Un período por factura (de la más reciente a la más antigua). Si la factura
+ * no trae `desde`/`hasta`, cubre desde la emisión anterior.
+ */
+export function periodsFromInvoices(invoices) {
+  return invoices.map((inv, idx) => {
+    let from = inv.desde ?? invoices[idx + 1]?.fEmision;
+    if (!from) {
+      const d = parseISODate(inv.fEmision);
+      d.setDate(d.getDate() - 30);
+      from = isoDate(d);
+    }
+    return {
+      from,
+      to: inv.hasta ?? inv.fEmision,
+      consumption: inv.consumo,
+      importe: inv.importe,
+      numFact: inv.numFact,
+      isCurrent: idx === 0,
+      isBilling: true,
+    };
+  });
+}
+
+// Un período por mes con lecturas diarias, del más reciente al más antiguo
+export function periodsFromDays(days) {
+  const currentMonth = isoDate(new Date()).slice(0, 7);
+  return monthlyFromDays(days)
+    .reverse()
+    .map((m) => {
+      const inMonth = days.filter((d) => d.date.startsWith(m.month));
+      return {
+        from: inMonth[0].date,
+        to: inMonth.at(-1).date,
+        consumption: m.totalKwh,
+        isCurrent: m.month === currentMonth,
+      };
+    });
 }
